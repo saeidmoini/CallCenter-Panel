@@ -45,3 +45,7 @@ nginx_https_port: 443
 
 node_command: npm
 frontend_api_base: "https://{{ domain }}/api"
+
+# Optional initial admin seed (leave empty if not needed)
+initial_admin_user: ""
+initial_admin_password: ""

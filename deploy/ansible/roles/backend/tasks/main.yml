@@ -45,6 +45,32 @@
   environment:
     DATABASE_URL: "{{ database_url }}"
 
+- name: Create initial admin user (optional)
+  when:
+    - initial_admin_user is defined and initial_admin_user != ""
+    - initial_admin_password is defined and initial_admin_password != ""
+  command: >
+    {{ venv_path }}/bin/python - <<'PY'
+    from app.core.db import SessionLocal, Base, engine
+    from app.schemas.user import AdminUserCreate
+    from app.services.auth_service import create_admin_user
+    from app.models.user import AdminUser
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        existing = db.query(AdminUser).filter_by(username="{{ initial_admin_user }}").first()
+        if not existing:
+            create_admin_user(db, AdminUserCreate(username="{{ initial_admin_user }}", password="{{ initial_admin_password }}", is_active=True))
+    finally:
+        db.close()
+    PY
+  args:
+    chdir: "{{ backend_dir }}"
+  environment:
+    PYTHONPATH: "{{ backend_dir }}"
+    DATABASE_URL: "{{ database_url }}"
+
 - name: Run Django migrate (when framework=django)
   when: backend_framework == "django"
   command: "{{ venv_path }}/bin/python manage.py migrate"
