@@ -4,6 +4,7 @@
       - git
       - python3-venv
       - python3-pip
+      - python3-psycopg2
       - nginx
       - build-essential
       - curl

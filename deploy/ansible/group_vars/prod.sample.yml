@@ -21,7 +21,7 @@ db_user: project_user
 db_pass: "CHANGE_ME"
 db_host: localhost
 db_port: 5432
-database_url: "postgresql+psycopg2://{{ db_user }}:{{ db_pass }}@{{ db_host }}:{{ db_port }}/{{ db_name }}"
+database_url: ""   # leave empty to auto-build with URL-encoded password; or set explicitly
 
 secret_key: "CHANGE_ME_SECRET"
 dialer_token: "CHANGE_ME_DIALER_TOKEN"
@@ -37,6 +37,8 @@ ssl_dir: "/etc/nginx/ssl/{{ domain }}"
 enable_ssl: true
 arvan_token: ""   # set when issuing via Arvan; keep empty in repo
 acme_sh_path: "/root/.acme.sh/acme.sh"
+acme_email: "admin@example.com"   # used for ACME account registration
+acme_reset_account: false        # set true if you need to wipe/rehydrate the acme account
 
 nginx_http_port: 80
 nginx_https_port: 443
