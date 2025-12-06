@@ -13,3 +13,4 @@
       - npm
     state: present
     update_cache: true
+  tags: ["common", "deploy", "init"]

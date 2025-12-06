@@ -5,6 +5,7 @@
       - postgresql-contrib
     state: present
     update_cache: true
+  tags: ["init"]
 
 - name: Ensure database user exists
   become_user: postgres
@@ -12,6 +13,7 @@
     name: "{{ db_user }}"
     password: "{{ db_pass }}"
     state: present
+  tags: ["init"]
 
 - name: Ensure database exists
   become_user: postgres
@@ -19,6 +21,7 @@
     name: "{{ db_name }}"
     owner: "{{ db_user }}"
     state: present
+  tags: ["init"]
 
 - name: Grant privileges on public schema
   become_user: postgres
@@ -29,3 +32,4 @@
     objs: public
     privs: "CREATE,USAGE"
     state: present
+  tags: ["init"]

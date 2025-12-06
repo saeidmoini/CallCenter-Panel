@@ -5,6 +5,7 @@
     mode: '0755'
     owner: "{{ project_user }}"
     group: "{{ project_group }}"
+  tags: ["deploy"]
 
 - name: Checkout repository
   git:
@@ -12,6 +13,7 @@
     dest: "{{ project_root }}"
     version: HEAD
     force: yes
+  tags: ["deploy"]
 
 - name: Ensure ownership on project root
   file:
@@ -20,29 +22,34 @@
     recurse: true
     owner: "{{ project_user }}"
     group: "{{ project_group }}"
+  tags: ["deploy"]
 
 - name: Ensure venv exists
   command: python3 -m venv {{ venv_path }}
   args:
     creates: "{{ venv_path }}/bin/activate"
+  tags: ["deploy"]
 
 - name: Install backend dependencies
   pip:
     requirements: "{{ backend_dir }}/requirements.txt"
     virtualenv: "{{ venv_path }}"
     virtualenv_site_packages: false
+  tags: ["deploy"]
 
 - name: Ensure gunicorn is present
   pip:
     name: gunicorn==21.2.0
     virtualenv: "{{ venv_path }}"
   register: gunicorn_installed
+  tags: ["deploy"]
 
 - name: Render backend .env
   template:
     src: backend_env.j2
     dest: "{{ backend_dir }}/.env"
     mode: '0600'
+  tags: ["deploy"]
 
 - name: Run Alembic migrations
   command: "{{ venv_path }}/bin/alembic upgrade head"
@@ -50,6 +57,7 @@
     chdir: "{{ backend_dir }}"
   environment:
     DATABASE_URL: "{{ database_url }}"
+  tags: ["deploy"]
 
 - name: Create initial admin user (optional)
   when:
@@ -76,24 +84,28 @@
   environment:
     PYTHONPATH: "{{ backend_dir }}"
     DATABASE_URL: "{{ database_url }}"
+  tags: ["init"]
 
 - name: Run Django migrate (when framework=django)
   when: backend_framework == "django"
   command: "{{ venv_path }}/bin/python manage.py migrate"
   args:
     chdir: "{{ django_manage_dir }}"
+  tags: ["deploy"]
 
 - name: Collect static (Django, when framework=django)
   when: backend_framework == "django"
   command: "{{ venv_path }}/bin/python manage.py collectstatic --noinput"
   args:
     chdir: "{{ django_manage_dir }}"
+  tags: ["deploy"]
 
 - name: Install systemd unit
   template:
     src: gunicorn.service.j2
     dest: "/etc/systemd/system/{{ project_name }}.service"
     mode: '0644'
+  tags: ["init"]
 
 - name: Reload and enable service
   systemd:
@@ -101,3 +113,4 @@
     enabled: true
     state: restarted
     daemon_reload: true
+  tags: ["deploy"]
