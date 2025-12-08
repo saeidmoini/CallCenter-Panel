@@ -37,6 +37,8 @@ const NumbersPage = () => {
   const [search, setSearch] = useState('')
   const [newNumbers, setNewNumbers] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null)
 
   const fetchNumbers = async () => {
     setLoading(true)
@@ -80,22 +82,56 @@ const NumbersPage = () => {
     fetchNumbers()
   }
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadMessage(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await client.post('/api/numbers/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setUploadMessage(`افزودن از فایل: ${data.inserted} اضافه شد، ${data.duplicates} تکراری، ${data.invalid} نامعتبر`)
+      fetchNumbers()
+    } catch (err) {
+      setUploadMessage('خطا در بارگذاری فایل')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
         <h2 className="font-semibold mb-3">افزودن شماره جدید</h2>
-        <form className="space-y-3" onSubmit={handleAdd}>
-          <textarea
-            className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
-            rows={3}
-            placeholder="هر خط یک شماره"
-            value={newNumbers}
-            onChange={(e) => setNewNumbers(e.target.value)}
-          />
-          <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700">
-            افزودن به صف
-          </button>
-        </form>
+        <div className="flex flex-col md:flex-row gap-6">
+          <form className="flex-1 space-y-3" onSubmit={handleAdd}>
+            <textarea
+              className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+              rows={3}
+              placeholder="هر خط یک شماره"
+              value={newNumbers}
+              onChange={(e) => setNewNumbers(e.target.value)}
+            />
+            <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700">
+              افزودن به صف
+            </button>
+          </form>
+          <div className="flex-1 space-y-2">
+            <label className="block text-sm font-medium text-slate-700">افزودن از فایل (یک ستون شماره)</label>
+            <input
+              type="file"
+              accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={handleUpload}
+              className="block w-full text-sm text-slate-700 file:mr-4 file:rounded file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-white hover:file:bg-brand-700"
+              disabled={uploading}
+            />
+            {uploadMessage && <div className="text-xs text-slate-600">{uploadMessage}</div>}
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
