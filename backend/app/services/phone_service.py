@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models.phone_number import PhoneNumber, CallStatus
+from ..models.call_attempt import CallAttempt
 from ..schemas.phone_number import PhoneNumberCreate, PhoneNumberStatusUpdate
 
 PHONE_PATTERN = re.compile(r"^09\d{9}$")
@@ -85,5 +86,6 @@ def delete_number(db: Session, number_id: int) -> None:
     number = db.get(PhoneNumber, number_id)
     if not number:
         raise HTTPException(status_code=404, detail="Number not found")
+    db.query(CallAttempt).filter(CallAttempt.phone_number_id == number_id).delete(synchronize_session=False)
     db.delete(number)
     db.commit()
