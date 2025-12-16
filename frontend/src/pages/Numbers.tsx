@@ -104,11 +104,11 @@ const NumbersPage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
+    <div className="space-y-6 px-2 md:px-0">
+      <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm w-full">
         <h2 className="font-semibold mb-3">افزودن شماره جدید</h2>
         <div className="flex flex-col md:flex-row gap-6">
-          <form className="flex-1 space-y-3" onSubmit={handleAdd}>
+          <form className="flex-1 space-y-3 w-full" onSubmit={handleAdd}>
             <textarea
               className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
               rows={3}
@@ -120,7 +120,7 @@ const NumbersPage = () => {
               افزودن به صف
             </button>
           </form>
-          <div className="flex-1 space-y-2">
+          <div className="flex-1 space-y-2 w-full">
             <label className="block text-sm font-medium text-slate-700">افزودن از فایل (یک ستون شماره)</label>
             <input
               type="file"
@@ -162,14 +162,14 @@ const NumbersPage = () => {
           <div className="text-sm">در حال بارگذاری...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-right">
+            <table className="w-full min-w-[720px] text-sm text-right whitespace-nowrap">
               <thead>
                 <tr className="text-slate-500">
                   <th className="py-2 text-right">شماره</th>
                   <th className="text-right">وضعیت</th>
                   <th className="text-right">تعداد تلاش</th>
                   <th className="text-right">آخرین تلاش</th>
-                  <th className="text-right"></th>
+                  <th className="text-right">اقدامات</th>
                 </tr>
               </thead>
               <tbody>
