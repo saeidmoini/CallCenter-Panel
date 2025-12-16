@@ -43,9 +43,13 @@ def upload_numbers(file: UploadFile = File(...), db: Session = Depends(get_db)):
             import openpyxl
         except ImportError:  # pragma: no cover
             raise RuntimeError("openpyxl not installed")
-        wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         sheet = wb.active
-        numbers = [str(cell.value) for cell in sheet["A"] if cell.value]
+        numbers = []
+        for row in sheet.iter_rows(min_row=1, max_col=1, values_only=True):
+            val = row[0]
+            if val:
+                numbers.append(str(val))
     result = phone_service.add_numbers(db, PhoneNumberCreate(phone_numbers=numbers))
     return PhoneNumberImportResponse(**result)
 
