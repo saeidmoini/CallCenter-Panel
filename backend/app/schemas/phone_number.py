@@ -33,3 +33,24 @@ class PhoneNumberImportResponse(BaseModel):
     duplicates: int
     invalid: int
     invalid_samples: list[str] = []
+
+
+class PhoneNumberStatsResponse(BaseModel):
+    total: int
+
+
+class PhoneNumberBulkAction(BaseModel):
+    action: str = Field(..., pattern="^(update_status|reset|delete)$")
+    status: CallStatus | None = None
+    note: str | None = None
+    ids: list[int] = Field(default_factory=list)
+    select_all: bool = False
+    excluded_ids: list[int] = Field(default_factory=list)
+    filter_status: CallStatus | None = None
+    search: str | None = None
+
+
+class PhoneNumberBulkResult(BaseModel):
+    updated: int = 0
+    reset: int = 0
+    deleted: int = 0

@@ -81,6 +81,12 @@ def report_result(db: Session, report: DialerReport):
     if not number or number.phone_number != report.phone_number:
         raise HTTPException(status_code=404, detail="Number not found or mismatch")
 
+    if report.call_allowed is not None:
+        config = ensure_config(db)
+        if config.enabled != report.call_allowed:
+            config.enabled = report.call_allowed
+            config.version += 1
+
     number.status = report.status
     number.last_attempt_at = report.attempted_at
     number.total_attempts += 1

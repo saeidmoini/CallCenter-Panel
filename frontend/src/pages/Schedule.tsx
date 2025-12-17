@@ -9,7 +9,6 @@ interface ScheduleInterval {
 
 interface ScheduleConfig {
   skip_holidays: boolean
-  enabled: boolean
   version: number
   intervals: ScheduleInterval[]
 }
@@ -19,7 +18,6 @@ const dayNames = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه',
 const SchedulePage = () => {
   const [config, setConfig] = useState<ScheduleConfig | null>(null)
   const [skipHolidays, setSkipHolidays] = useState(true)
-  const [enabled, setEnabled] = useState(true)
   const [intervals, setIntervals] = useState<ScheduleInterval[]>([])
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -28,7 +26,6 @@ const SchedulePage = () => {
     const { data } = await client.get<ScheduleConfig>('/api/schedule')
     setConfig(data)
     setSkipHolidays(data.skip_holidays)
-    setEnabled(data.enabled)
     setIntervals(data.intervals)
   }
 
@@ -54,7 +51,7 @@ const SchedulePage = () => {
     setSaving(true)
     setSaveMessage(null)
     try {
-      await client.put('/api/schedule', { skip_holidays: skipHolidays, enabled, intervals })
+      await client.put('/api/schedule', { skip_holidays: skipHolidays, intervals })
       setSaveMessage({ type: 'success', text: 'تغییرات ذخیره شد' })
       fetchConfig()
     } catch (e) {
@@ -80,10 +77,6 @@ const SchedulePage = () => {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
           عدم تماس در تعطیلات رسمی
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          فعال بودن تماس‌ها (غیرفعال شود تا هیچ شماره‌ای به سرور تماس ارسال نشود)
         </label>
 
         <div className="flex justify-between items-center">

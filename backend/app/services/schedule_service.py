@@ -18,7 +18,11 @@ def ensure_config(db: Session) -> ScheduleConfig:
     _ensure_enabled_column(db)
     config = db.get(ScheduleConfig, 1)
     if not config:
-        config = ScheduleConfig(skip_holidays=settings.skip_holidays_default, enabled=True, version=1)
+        config = ScheduleConfig(
+            skip_holidays=settings.skip_holidays_default,
+            enabled=True,
+            version=1,
+        )
         db.add(config)
         db.commit()
         db.refresh(config)

@@ -6,7 +6,15 @@ from sqlalchemy.orm import Session
 from ..api.deps import get_active_admin
 from ..core.db import get_db
 from ..models.phone_number import CallStatus
-from ..schemas.phone_number import PhoneNumberCreate, PhoneNumberOut, PhoneNumberStatusUpdate, PhoneNumberImportResponse
+from ..schemas.phone_number import (
+    PhoneNumberCreate,
+    PhoneNumberOut,
+    PhoneNumberStatusUpdate,
+    PhoneNumberImportResponse,
+    PhoneNumberStatsResponse,
+    PhoneNumberBulkAction,
+    PhoneNumberBulkResult,
+)
 from ..services import phone_service
 
 router = APIRouter(dependencies=[Depends(get_active_admin)])
@@ -22,6 +30,16 @@ def list_numbers(
 ):
     numbers = phone_service.list_numbers(db, status=status, search=search, skip=skip, limit=limit)
     return numbers
+
+
+@router.get("/stats", response_model=PhoneNumberStatsResponse)
+def numbers_stats(
+    status: CallStatus | None = Query(default=None),
+    search: str | None = None,
+    db: Session = Depends(get_db),
+):
+    total = phone_service.count_numbers(db, status=status, search=search)
+    return PhoneNumberStatsResponse(total=total)
 
 
 @router.post("/", response_model=PhoneNumberImportResponse)
@@ -70,3 +88,8 @@ def delete_number(number_id: int, db: Session = Depends(get_db)):
 def reset_number(number_id: int, db: Session = Depends(get_db)):
     number = phone_service.reset_number(db, number_id)
     return number
+
+
+@router.post("/bulk", response_model=PhoneNumberBulkResult)
+def bulk_numbers_action(payload: PhoneNumberBulkAction, db: Session = Depends(get_db)):
+    return phone_service.bulk_action(db, payload)

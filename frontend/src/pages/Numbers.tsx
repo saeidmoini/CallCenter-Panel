@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import client from '../api/client'
 import dayjs from 'dayjs'
 
@@ -42,6 +42,14 @@ const NumbersPage = () => {
   const [page, setPage] = useState(0)
   const pageSize = 50
   const [hasMore, setHasMore] = useState(false)
+  const [totalCount, setTotalCount] = useState(0)
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
+  const [selectAll, setSelectAll] = useState(false)
+
+  const [bulkAction, setBulkAction] = useState<'update_status' | 'reset' | 'delete'>('update_status')
+  const [bulkStatus, setBulkStatus] = useState<string>('IN_QUEUE')
 
   const fetchNumbers = async () => {
     setLoading(true)
@@ -58,9 +66,26 @@ const NumbersPage = () => {
     setLoading(false)
   }
 
+  const fetchStats = async () => {
+    const { data } = await client.get<{ total: number }>('/api/numbers/stats', {
+      params: {
+        status: statusFilter || undefined,
+        search: search || undefined,
+      },
+    })
+    setTotalCount(data.total)
+  }
+
   useEffect(() => {
     fetchNumbers()
+    fetchStats()
   }, [page, statusFilter, search])
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+    setExcludedIds(new Set())
+    setSelectAll(false)
+  }
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault()
@@ -69,6 +94,7 @@ const NumbersPage = () => {
     await client.post('/api/numbers', { phone_numbers })
     setNewNumbers('')
     fetchNumbers()
+    fetchStats()
   }
 
   const updateStatus = async (id: number, status: string) => {
@@ -81,6 +107,17 @@ const NumbersPage = () => {
     if (!ok) return
     await client.delete(`/api/numbers/${id}`)
     setNumbers((prev) => prev.filter((n) => n.id !== id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    fetchStats()
   }
 
   const resetNumber = async (id: number) => {
@@ -108,6 +145,92 @@ const NumbersPage = () => {
       e.target.value = ''
     }
   }
+
+  const isRowSelected = (id: number) => {
+    if (selectAll) {
+      return !excludedIds.has(id)
+    }
+    return selectedIds.has(id)
+  }
+
+  const toggleRow = (id: number) => {
+    if (selectAll) {
+      const next = new Set(excludedIds)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      setExcludedIds(next)
+    } else {
+      const next = new Set(selectedIds)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      setSelectedIds(next)
+    }
+  }
+
+  const allVisibleSelected = useMemo(
+    () => numbers.length > 0 && numbers.every((n) => isRowSelected(n.id)),
+    [numbers, selectedIds, excludedIds, selectAll],
+  )
+
+  const toggleCurrentPage = () => {
+    if (selectAll) {
+      const next = new Set(excludedIds)
+      numbers.forEach((n) => {
+        if (allVisibleSelected) {
+          next.add(n.id)
+        } else {
+          next.delete(n.id)
+        }
+      })
+      setExcludedIds(next)
+    } else {
+      const next = new Set(selectedIds)
+      numbers.forEach((n) => {
+        if (allVisibleSelected) {
+          next.delete(n.id)
+        } else {
+          next.add(n.id)
+        }
+      })
+      setSelectedIds(next)
+    }
+  }
+
+  const handleBulk = async () => {
+    const ids = selectAll ? [] : Array.from(selectedIds)
+    const excluded_ids = selectAll ? Array.from(excludedIds) : []
+    if (!selectAll && ids.length === 0) {
+      alert('هیچ ردیفی انتخاب نشده است')
+      return
+    }
+    if (bulkAction === 'delete') {
+      const ok = window.confirm('حذف دسته‌جمعی انجام شود؟')
+      if (!ok) return
+    }
+    const payload: any = {
+      action: bulkAction,
+      ids,
+      select_all: selectAll,
+      excluded_ids,
+      filter_status: statusFilter || undefined,
+      search: search || undefined,
+    }
+    if (bulkAction === 'update_status') {
+      payload.status = bulkStatus
+    }
+    await client.post('/api/numbers/bulk', payload)
+    clearSelection()
+    fetchNumbers()
+    fetchStats()
+  }
+
+  const selectedCount = selectAll ? totalCount - excludedIds.size : selectedIds.size
 
   return (
     <div className="space-y-6 px-2 md:px-0 max-w-full w-full min-w-0">
@@ -147,6 +270,7 @@ const NumbersPage = () => {
             value={statusFilter}
             onChange={(e) => {
               setPage(0)
+              clearSelection()
               setStatusFilter(e.target.value)
             }}
           >
@@ -161,41 +285,98 @@ const NumbersPage = () => {
             value={search}
             onChange={(e) => {
               setPage(0)
+              clearSelection()
               setSearch(e.target.value)
             }}
             placeholder="جستجوی شماره"
             className="rounded border border-slate-200 px-2 py-1 text-sm"
           />
-          <button onClick={fetchNumbers} className="rounded bg-slate-900 text-white px-3 py-1 text-sm">
+          <button onClick={() => { setPage(0); fetchNumbers(); fetchStats(); }} className="rounded bg-slate-900 text-white px-3 py-1 text-sm">
             بروزرسانی
           </button>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span>انتخاب شده: {selectedCount}</span>
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-[11px]"
+              onClick={() => {
+                setSelectAll(true)
+                setSelectedIds(new Set())
+                setExcludedIds(new Set())
+              }}
+              disabled={totalCount === 0}
+            >
+              انتخاب همه نتایج
+            </button>
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-[11px]"
+              onClick={clearSelection}
+              disabled={selectedCount === 0 && !selectAll}
+            >
+              لغو انتخاب
+            </button>
+          </div>
         </div>
-        <div className="flex items-center justify-end gap-2 mb-2">
-          <span className="text-xs text-slate-600">
-            صفحه {page + 1}
-          </span>
-          <button
-            className="text-xs rounded border border-slate-200 px-2 py-1 disabled:opacity-50"
-            onClick={() => setPage((p) => Math.max(p - 1, 0))}
-            disabled={page === 0}
-          >
-            قبلی
-          </button>
-          <button
-            className="text-xs rounded border border-slate-200 px-2 py-1 disabled:opacity-50"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!hasMore}
-          >
-            بعدی
-          </button>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-600">عملیات گروهی</label>
+            <select
+              className="rounded border border-slate-200 px-2 py-1 text-sm"
+              value={bulkAction}
+              onChange={(e) => setBulkAction(e.target.value as any)}
+            >
+              <option value="update_status">تغییر وضعیت</option>
+              <option value="reset">ریست (برگشت به صف)</option>
+              <option value="delete">حذف</option>
+            </select>
+            {bulkAction === 'update_status' && (
+              <select
+                className="rounded border border-slate-200 px-2 py-1 text-sm"
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value)}
+              >
+                {Object.entries(statusLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              className="rounded bg-brand-500 text-white px-3 py-1 text-sm disabled:opacity-50"
+              disabled={selectedCount === 0}
+              onClick={handleBulk}
+            >
+              اعمال
+            </button>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-slate-600">صفحه {page + 1}</span>
+            <button
+              className="text-xs rounded border border-slate-200 px-2 py-1 disabled:opacity-50"
+              onClick={() => setPage((p) => Math.max(p - 1, 0))}
+              disabled={page === 0}
+            >
+              قبلی
+            </button>
+            <button
+              className="text-xs rounded border border-slate-200 px-2 py-1 disabled:opacity-50"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasMore}
+            >
+              بعدی
+            </button>
+          </div>
         </div>
         {loading ? (
           <div className="text-sm">در حال بارگذاری...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm text-right whitespace-nowrap">
+            <table className="w-full min-w-[620px] text-sm text-right whitespace-nowrap">
               <thead>
                 <tr className="text-slate-500">
+                  <th className="py-2 text-right w-10">
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleCurrentPage} />
+                  </th>
                   <th className="py-2 text-right">شماره</th>
                   <th className="text-right">وضعیت</th>
                   <th className="text-right">تعداد تلاش</th>
@@ -206,6 +387,9 @@ const NumbersPage = () => {
               <tbody>
                 {numbers.map((n) => (
                   <tr key={n.id} className="border-t">
+                    <td className="py-2 text-right">
+                      <input type="checkbox" checked={isRowSelected(n.id)} onChange={() => toggleRow(n.id)} />
+                    </td>
                     <td className="py-2 font-mono text-xs">{n.phone_number}</td>
                     <td className="text-right">
                       <span

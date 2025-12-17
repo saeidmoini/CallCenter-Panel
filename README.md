@@ -40,7 +40,9 @@ Admin panel for managing outbound dialing campaigns: phone number queueing, call
 - Admin authentication (JWT), user CRUD, activate/deactivate, password hashing (bcrypt)
 - Call scheduling: weekday intervals (Saturday–Friday), skip-holidays flag, schedule versioning, service that answers `is_call_allowed`
 - Numbers management: add manually or CSV/XLSX import, dedupe, validation for Iranian mobile numbers, status updates, pagination/search
+- Bulk actions on numbers (select page, select all filtered across pages): change to any status, reset to queue, or delete
 - Dialer APIs protected by `DIALER_TOKEN`
+- Single global switch (`enabled`/`call_allowed`) controls whether numbers are dispatched to the dialer; can be toggled from the UI or by the dialer via result reporting
 
 ## Dialer API (scheduling enforced)
 - `GET /api/dialer/next-batch?size=100`
@@ -69,20 +71,27 @@ Admin panel for managing outbound dialing campaigns: phone number queueing, call
         "numbers": [{"id": 1, "phone_number": "09123456789"}]
       }
     }
-    ```
+  ```
   - Dialer must obey `call_allowed` and back off using `retry_after_seconds`.
 - `POST /api/dialer/report-result`
-  - Payload: `{ "number_id": 1, "phone_number": "0912...", "status": "CONNECTED" | "FAILED" | "NOT_INTERESTED" | "MISSED", "reason": "optional", "attempted_at": "ISO8601" }`
-  - Updates number status, increments attempts, clears assignment, and logs attempt.
+  - Payload: `{ "number_id": 1, "phone_number": "0912...", "status": "CONNECTED" | "FAILED" | "NOT_INTERESTED" | "MISSED", "reason": "optional", "attempted_at": "ISO8601", "call_allowed": false }`
+  - Updates number status, increments attempts, clears assignment, logs attempt, and if `call_allowed` is sent (true/false) it updates the global enable flag accordingly (e.g., dialer can shut off dispatch by sending `call_allowed=false`).
 
 ## Number validation & dedupe
 - Accepted formats: `0912...`, `+98912...`, `0098912...`, or `912...` (normalized to `09` + 9 digits)
 - Invalid entries rejected; duplicates ignored and reported in response.
 
+### Admin number endpoints (high level)
+- `GET /api/numbers` list with `status`, `search`, `skip`, `limit`
+- `GET /api/numbers/stats` returns `{ "total": <count> }` for the current filter (used for select-all across pages)
+- `POST /api/numbers` add manually; `POST /api/numbers/upload` CSV/XLSX single-column import
+- `PUT /api/numbers/{id}/status`, `POST /api/numbers/{id}/reset`, `DELETE /api/numbers/{id}`
+- `POST /api/numbers/bulk` with `action` (`update_status` | `reset` | `delete`), `status` (when updating), `ids` or `select_all` + filters to act on all filtered rows (even across pages)
+
 ## Scheduling
 - Intervals stored per weekday (Saturday=0 … Friday=6), evaluated in Tehran time.
 - `skip_holidays` flag is stored; holiday detection hook is stubbed for now. Default is taken from `.env` on first boot.
-- Global enable/disable switch: when disabled, `/api/dialer/next-batch` returns `call_allowed=false` with reason `disabled` so no numbers reach the dialer.
+- Global enable/disable switch (`enabled`/`call_allowed`): when disabled, `/api/dialer/next-batch` returns `call_allowed=false` with reason `disabled` so no numbers reach the dialer. Dialer may also send `call_allowed=false` in report-result to turn it off remotely.
 - `schedule_version` increments on changes and is echoed in `/api/dialer/next-batch` responses.
 - Assigned numbers auto-unlock after `ASSIGNMENT_TIMEOUT_MINUTES` (default 60) if no result is reported, returning them to the queue.
 

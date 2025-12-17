@@ -31,3 +31,4 @@ class DialerReport(BaseModel):
     status: CallStatus
     reason: str | None = None
     attempted_at: datetime
+    call_allowed: bool | None = None

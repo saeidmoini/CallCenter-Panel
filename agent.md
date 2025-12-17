@@ -26,9 +26,11 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 ## Scheduling rules
 - Schedule lives in `services/schedule_service.py`; day mapping is Saturday=0 … Friday=6 using Tehran time. `is_call_allowed` checks intervals, `enabled` (global switch), and `skip_holidays` (holiday detection stubbed) and returns retry hints. `schedule_version` increments on changes.
 - `/api/dialer/next-batch` **must** enforce schedule before selecting numbers and always returns `call_allowed` + `retry_after_seconds` (reason can be `disabled`, `holiday`, `outside_allowed_time_window`, etc.). Never move scheduling logic to the dialer side.
+- Global enable flag (`enabled`/`call_allowed`): when false, `/api/dialer/next-batch` returns `call_allowed=false` with reason `disabled`. Dialer can send `call_allowed` in `/api/dialer/report-result` to toggle this flag remotely; bump `schedule_version` when it changes.
 
 ## Number logic
 - Validation/normalization in `services/phone_service.py` (Iran mobile: normalized to `09` + 9 digits). Duplicates are ignored; response reports inserted/duplicate/invalid counts. Status updates allowed via admin API and dialer report.
+- Bulk admin ops: `/api/numbers/bulk` supports `update_status`, `reset`, `delete` on selected ids or `select_all` with filters (status/search) and optional `excluded_ids`. `/api/numbers/stats` returns total for the current filter (used for select-all across pages). Keep bulk logic in `phone_service.bulk_action`.
 
 ## Auth
 - Admins: JWT bearer. `get_current_active_user` from `core/security.py` guards admin routes. Passwords hashed with bcrypt.
