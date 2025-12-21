@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..api.deps import get_active_admin
 from ..core.db import get_db
-from ..schemas.stats import NumbersSummary, AttemptTrendResponse
+from ..schemas.stats import NumbersSummary, AttemptTrendResponse, AttemptSummary
 from ..services import stats_service
 
 router = APIRouter(dependencies=[Depends(get_active_admin)])
@@ -20,3 +20,11 @@ def get_attempt_trend(
     db: Session = Depends(get_db),
 ):
     return stats_service.attempt_trend(db, days=days)
+
+
+@router.get("/attempts-summary", response_model=AttemptSummary)
+def get_attempts_summary(
+    days: int | None = Query(default=None, ge=1, le=365, description="Optional: limit to last N days (Tehran)"),
+    db: Session = Depends(get_db),
+):
+    return stats_service.attempt_summary(db, days=days)

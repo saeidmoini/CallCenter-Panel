@@ -22,6 +22,11 @@ interface NumbersSummary {
   status_counts: StatusShare[]
 }
 
+interface AttemptSummary {
+  total_attempts: number
+  status_counts: StatusShare[]
+}
+
 interface DailyStatusBreakdown {
   day: string
   total_attempts: number
@@ -57,9 +62,11 @@ const DashboardPage = () => {
   const [loadingConfig, setLoadingConfig] = useState(false)
   const [saving, setSaving] = useState(false)
   const [numbersSummary, setNumbersSummary] = useState<NumbersSummary | null>(null)
+  const [attemptSummary, setAttemptSummary] = useState<AttemptSummary | null>(null)
   const [trend, setTrend] = useState<AttemptTrendResponse | null>(null)
   const filteredStatuses = useMemo(() => Object.keys(statusLabels).filter((s) => s !== 'IN_QUEUE'), [])
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(filteredStatuses)
+  const [attemptMode, setAttemptMode] = useState<'all' | 'today'>('all')
 
   const fetchConfig = async () => {
     setLoadingConfig(true)
@@ -68,19 +75,31 @@ const DashboardPage = () => {
     setLoadingConfig(false)
   }
 
-  const fetchStats = async () => {
-    const [numbersRes, trendRes] = await Promise.all([
-      client.get<NumbersSummary>('/api/stats/numbers-summary'),
-      client.get<AttemptTrendResponse>('/api/stats/attempt-trend', { params: { days: 14 } }),
-    ])
-    setNumbersSummary(numbersRes.data)
-    setTrend(trendRes.data)
+  const fetchNumbers = async () => {
+    const { data } = await client.get<NumbersSummary>('/api/stats/numbers-summary')
+    setNumbersSummary(data)
+  }
+
+  const fetchAttemptSummary = async (mode: 'all' | 'today') => {
+    const params = mode === 'today' ? { days: 1 } : {}
+    const { data } = await client.get<AttemptSummary>('/api/stats/attempts-summary', { params })
+    setAttemptSummary(data)
+  }
+
+  const fetchTrend = async () => {
+    const { data } = await client.get<AttemptTrendResponse>('/api/stats/attempt-trend', { params: { days: 14 } })
+    setTrend(data)
   }
 
   useEffect(() => {
     fetchConfig()
-    fetchStats()
+    fetchNumbers()
+    fetchTrend()
   }, [])
+
+  useEffect(() => {
+    fetchAttemptSummary(attemptMode)
+  }, [attemptMode])
 
   const toggleDialer = async () => {
     if (!config) return
@@ -99,12 +118,7 @@ const DashboardPage = () => {
     </span>
   )
 
-  const attemptedCount = useMemo(() => {
-    if (!numbersSummary) return null
-    const inQueue = numbersSummary.status_counts.find((s) => s.status === 'IN_QUEUE')?.count ?? 0
-    const value = numbersSummary.total_numbers - inQueue
-    return value < 0 ? 0 : value
-  }, [numbersSummary])
+  const attemptedCount = useMemo(() => attemptSummary?.total_attempts ?? null, [attemptSummary])
 
   const inQueueCount = useMemo(() => {
     if (!numbersSummary) return null
@@ -112,14 +126,14 @@ const DashboardPage = () => {
   }, [numbersSummary])
 
   const attemptedStatusCounts = useMemo(() => {
-    if (!numbersSummary) return null
-    const attemptTotal = attemptedCount ?? 0
-    const filtered = numbersSummary.status_counts.filter((s) => s.status !== 'IN_QUEUE')
+    if (!attemptSummary) return null
+    const attemptTotal = attemptedSummary.total_attempts
+    const filtered = attemptSummary.status_counts.filter((s) => s.status !== 'IN_QUEUE')
     return filtered.map((s) => ({
       ...s,
       percentage: attemptTotal > 0 ? (s.count / attemptTotal) * 100 : 0,
     }))
-  }, [numbersSummary, attemptedCount])
+  }, [attemptSummary])
 
   const pieData = useMemo(() => {
     if (!attemptedStatusCounts) return null
@@ -163,6 +177,8 @@ const DashboardPage = () => {
     )
   }
 
+  const attemptModeLabel = attemptMode === 'today' ? 'امروز' : 'کل'
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -188,12 +204,31 @@ const DashboardPage = () => {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="font-semibold">نمای کلی شماره‌ها</h3>
-              <p className="text-sm text-slate-500">تعداد کل و توزیع وضعیت‌ها (بر اساس تماس‌های گرفته‌شده)</p>
+              <p className="text-sm text-slate-500">توذیع وضعیت‌ها (بر اساس تماس‌های گرفته‌شده)</p>
             </div>
-            <div className="flex flex-col items-end text-sm text-slate-700 space-y-1">
-              <div>مجموع: <span className="font-semibold">{numbersSummary?.total_numbers ?? '-'}</span></div>
-              <div>تماس‌های انجام‌شده: <span className="font-semibold">{attemptedCount ?? '-'}</span></div>
-              <div>در صف: <span className="font-semibold">{inQueueCount ?? '-'}</span></div>
+            <div className="flex items-end gap-4">
+              <div className="flex flex-col text-xs bg-slate-50 border border-slate-200 rounded-full px-2 py-1">
+                <span className="font-semibold text-slate-700">حالت داده</span>
+                <div className="flex items-center gap-1">
+                  {[
+                    { key: 'all', label: 'کل' },
+                    { key: 'today', label: 'امروز' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      className={`px-2 py-1 rounded-full text-xs ${attemptMode === item.key ? 'bg-brand-500 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}
+                      onClick={() => setAttemptMode(item.key as 'all' | 'today')}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col items-end text-sm text-slate-700 space-y-1">
+                <div>مجموع: <span className="font-semibold">{numbersSummary?.total_numbers ?? '-'}</span></div>
+                <div>تماس‌های انجام‌شده ({attemptModeLabel}): <span className="font-semibold">{attemptedCount ?? '-'}</span></div>
+                <div>در صف: <span className="font-semibold">{inQueueCount ?? '-'}</span></div>
+              </div>
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
@@ -245,24 +280,26 @@ const DashboardPage = () => {
 
       <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-100 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold">روند درصد وضعیت تماس‌ها (روزانه)</h3>
-              <p className="text-sm text-slate-500">نمایش درصد سهم هر وضعیت در تماس‌های هر روز (تقویم شمسی، بدون در صف)</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-sm">
-            {Object.entries(statusLabels).filter(([key]) => key !== 'IN_QUEUE').map(([key, label]) => (
-              <label key={key} className="flex items-center gap-2 border border-slate-200 rounded-full px-3 py-1">
-                <input
-                  type="checkbox"
-                  checked={selectedStatuses.includes(key)}
-                  onChange={() => toggleStatusFilter(key)}
-                />
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: statusColors[key] || '#cbd5e1' }}></span>
-                  {label}
-                </span>
-              </label>
-            ))}
+          <div>
+            <h3 className="font-semibold">روند درصد وضعیت تماس‌ها (روزانه)</h3>
+            <p className="text-sm text-slate-500">نمایش درصد سهم هر وضعیت در تماس‌های هر روز (تقویم شمسی، بدون در صف)</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm">
+            {Object.entries(statusLabels)
+              .filter(([key]) => key !== 'IN_QUEUE')
+              .map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 border border-slate-200 rounded-full px-3 py-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes(key)}
+                    onChange={() => toggleStatusFilter(key)}
+                  />
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: statusColors[key] || '#cbd5e1' }}></span>
+                    {label}
+                  </span>
+                </label>
+              ))}
           </div>
         </div>
         <div>

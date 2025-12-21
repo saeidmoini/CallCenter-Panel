@@ -15,6 +15,11 @@ class NumbersSummary(BaseModel):
     status_counts: list[StatusShare]
 
 
+class AttemptSummary(BaseModel):
+    total_attempts: int
+    status_counts: list[StatusShare]
+
+
 class DailyStatusBreakdown(BaseModel):
     day: date = Field(..., description="Tehran-local date")
     total_attempts: int

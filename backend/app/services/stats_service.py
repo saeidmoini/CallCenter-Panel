@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..models.phone_number import PhoneNumber, CallStatus
 from ..models.call_attempt import CallAttempt
-from ..schemas.stats import NumbersSummary, StatusShare, AttemptTrendResponse, DailyStatusBreakdown
+from ..schemas.stats import NumbersSummary, StatusShare, AttemptTrendResponse, DailyStatusBreakdown, AttemptSummary
 from .schedule_service import TEHRAN_TZ
 
 settings = get_settings()
@@ -36,6 +36,35 @@ def numbers_summary(db: Session) -> NumbersSummary:
             status_shares.append(StatusShare(status=status, count=0, percentage=0.0))
     status_shares.sort(key=lambda s: s.status.value)
     return NumbersSummary(total_numbers=total, status_counts=status_shares)
+
+
+def attempt_summary(db: Session, days: int | None = None) -> AttemptSummary:
+    query = db.query(CallAttempt.status, func.count(CallAttempt.id))
+    if days and days > 0:
+        start_tehran = _tehran_start_of_day(days - 1)
+        start_utc = start_tehran.astimezone(timezone.utc)
+        query = query.filter(CallAttempt.attempted_at >= start_utc)
+    rows = query.group_by(CallAttempt.status).all()
+    total = sum(count for _, count in rows)
+    status_shares: list[StatusShare] = []
+    for status, count in rows:
+        try:
+            parsed_status = CallStatus(status)
+        except ValueError:
+            continue
+        status_shares.append(
+            StatusShare(
+                status=parsed_status,
+                count=count,
+                percentage=(count / total * 100) if total else 0.0,
+            )
+        )
+    existing = {s.status for s in status_shares}
+    for status in CallStatus:
+        if status not in existing:
+            status_shares.append(StatusShare(status=status, count=0, percentage=0.0))
+    status_shares.sort(key=lambda s: s.status.value)
+    return AttemptSummary(total_attempts=total, status_counts=status_shares)
 
 
 def _tehran_start_of_day(days_back: int) -> datetime:
