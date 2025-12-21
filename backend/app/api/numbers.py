@@ -26,9 +26,13 @@ def list_numbers(
     search: str | None = None,
     skip: int = 0,
     limit: int = 50,
+    sort_by: str = Query(default="created_at", pattern="^(created_at|last_attempt_at|status)$"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
-    numbers = phone_service.list_numbers(db, status=status, search=search, skip=skip, limit=limit)
+    numbers = phone_service.list_numbers(
+        db, status=status, search=search, skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order
+    )
     return numbers
 
 

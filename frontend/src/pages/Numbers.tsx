@@ -50,6 +50,8 @@ const NumbersPage = () => {
 
   const [bulkAction, setBulkAction] = useState<'update_status' | 'reset' | 'delete'>('update_status')
   const [bulkStatus, setBulkStatus] = useState<string>('IN_QUEUE')
+  const [sortBy, setSortBy] = useState<'created_at' | 'last_attempt_at' | 'status'>('created_at')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const fetchNumbers = async () => {
     setLoading(true)
@@ -59,6 +61,8 @@ const NumbersPage = () => {
         search: search || undefined,
         skip: page * pageSize,
         limit: pageSize,
+        sort_by: sortBy,
+        sort_order: sortOrder,
       },
     })
     setNumbers(data)
@@ -79,7 +83,7 @@ const NumbersPage = () => {
   useEffect(() => {
     fetchNumbers()
     fetchStats()
-  }, [page, statusFilter, search])
+  }, [page, statusFilter, search, sortBy, sortOrder])
 
   const clearSelection = () => {
     setSelectedIds(new Set())
@@ -232,6 +236,15 @@ const NumbersPage = () => {
 
   const selectedCount = selectAll ? totalCount - excludedIds.size : selectedIds.size
 
+  const handleSort = (field: 'last_attempt_at' | 'status') => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(field)
+      setSortOrder('desc')
+    }
+  }
+
   return (
     <div className="space-y-6 px-2 md:px-0 max-w-full w-full min-w-0">
       <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm w-full min-w-0">
@@ -378,9 +391,13 @@ const NumbersPage = () => {
                     <input type="checkbox" checked={allVisibleSelected} onChange={toggleCurrentPage} />
                   </th>
                   <th className="py-2 text-right">شماره</th>
-                  <th className="text-right">وضعیت</th>
+                  <th className="text-right cursor-pointer select-none" onClick={() => handleSort('status')}>
+                    وضعیت {sortBy === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
                   <th className="text-right">تعداد تلاش</th>
-                  <th className="text-right w-32">آخرین تلاش</th>
+                  <th className="text-right w-32 cursor-pointer select-none" onClick={() => handleSort('last_attempt_at')}>
+                    آخرین تلاش {sortBy === 'last_attempt_at' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </th>
                   <th className="text-right w-80">اقدامات</th>
                 </tr>
               </thead>

@@ -50,13 +50,33 @@ def add_numbers(db: Session, payload: PhoneNumberCreate):
     }
 
 
-def list_numbers(db: Session, status: CallStatus | None = None, search: str | None = None, skip: int = 0, limit: int = 50):
+def list_numbers(
+    db: Session,
+    status: CallStatus | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 50,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+):
     query = db.query(PhoneNumber)
     if status:
         query = query.filter(PhoneNumber.status == status)
     if search:
         query = query.filter(PhoneNumber.phone_number.ilike(f"%{search}%"))
-    return query.order_by(PhoneNumber.created_at.desc()).offset(skip).limit(limit).all()
+
+    sort_map = {
+        "created_at": PhoneNumber.created_at,
+        "last_attempt_at": PhoneNumber.last_attempt_at,
+        "status": PhoneNumber.status,
+    }
+    column = sort_map.get(sort_by, PhoneNumber.created_at)
+    if sort_order == "asc":
+        query = query.order_by(column.asc().nulls_last())
+    else:
+        query = query.order_by(column.desc().nulls_last())
+
+    return query.offset(skip).limit(limit).all()
 
 
 def count_numbers(db: Session, status: CallStatus | None = None, search: str | None = None) -> int:
