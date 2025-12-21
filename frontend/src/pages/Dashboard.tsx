@@ -186,6 +186,7 @@ const DashboardPage = () => {
       const color = statusColors[status] || '#0ea5e9'
       return {
         label: statusLabels[status] || status,
+        statusKey: status,
         data: trend.buckets.map((bucket) => {
           const match = bucket.status_counts.find((s) => s.status === status)
           return match ? Number(match.percentage.toFixed(2)) : 0
@@ -218,6 +219,15 @@ const DashboardPage = () => {
             : attemptMode === '30d'
               ? '۳۰ روز گذشته'
               : 'کل'
+
+  const trendModeLabel =
+    trendMode === 'hour6'
+      ? '۶ ساعت گذشته'
+      : trendMode === 'hour24'
+        ? '۲۴ ساعت گذشته'
+        : trendMode === 'day7'
+          ? '۷ روز گذشته'
+          : '۳۰ روز گذشته'
 
   return (
     <div className="space-y-6">
@@ -324,8 +334,8 @@ const DashboardPage = () => {
       <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-100 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold">روند درصد وضعیت تماس‌ها (روزانه)</h3>
-            <p className="text-sm text-slate-500">نمایش درصد سهم هر وضعیت در تماس‌های هر بازه (تقویم شمسی، بدون در صف)</p>
+            <h3 className="font-semibold">روند درصد وضعیت تماس‌ها</h3>
+            <p className="text-sm text-slate-500">نمایش درصد سهم هر وضعیت در تماس‌های هر بازه ({trendModeLabel}، بدون در صف)</p>
           </div>
           <div className="flex flex-wrap gap-2 text-sm items-center">
             <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1 text-xs">
@@ -374,16 +384,26 @@ const DashboardPage = () => {
                       title: (items) => {
                         if (!items.length) return ''
                         const idx = items[0].dataIndex
-                        const isoDate = trend?.days[idx]?.day
-                        return isoDate ? dayjs(isoDate).calendar('jalali').format('YYYY/MM/DD') : ''
-                      },
-                      label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%`,
+                    const bucket = trend?.buckets[idx]
+                    if (!bucket) return ''
+                    return trend?.granularity === 'hour'
+                      ? dayjs(bucket.bucket).calendar('jalali').format('YYYY/MM/DD HH:mm')
+                      : dayjs(bucket.bucket).calendar('jalali').format('YYYY/MM/DD')
+                    },
+                    label: (ctx) => {
+                        const bucket = trend?.buckets[ctx.dataIndex]
+                        const statusKey = (ctx.dataset as any).statusKey as string | undefined
+                        const match = statusKey ? bucket?.status_counts.find((s) => s.status === statusKey) : undefined
+                        const count = match?.count ?? 0
+                        const total = bucket?.total_attempts ?? 0
+                        return `${ctx.dataset.label}: ${ctx.parsed.y}% (${count}/${total})`
                     },
                   },
                 },
+                },
                 scales: {
                   y: {
-                    title: { display: true, text: 'درصد از کل تماس‌های روز' },
+                    title: { display: true, text: 'درصد از کل تماس‌های این بازه' },
                     ticks: { callback: (value) => `${value}%` },
                     suggestedMin: 0,
                     suggestedMax: 100,
