@@ -11,6 +11,7 @@ from ..models.dialer_batch import DialerBatch
 from ..models.call_attempt import CallAttempt
 from ..schemas.dialer import DialerReport
 from .schedule_service import is_call_allowed, ensure_config, TEHRAN_TZ
+from .phone_service import normalize_phone
 
 settings = get_settings()
 
@@ -77,9 +78,20 @@ def fetch_next_batch(db: Session, size: int | None = None):
 
 
 def report_result(db: Session, report: DialerReport):
-    number = db.get(PhoneNumber, report.number_id)
-    if not number or number.phone_number != report.phone_number:
-        raise HTTPException(status_code=404, detail="Number not found or mismatch")
+    number: PhoneNumber | None = None
+    if report.number_id is not None:
+        number = db.get(PhoneNumber, report.number_id)
+        if not number or number.phone_number != report.phone_number:
+            raise HTTPException(status_code=404, detail="Number not found or mismatch")
+    else:
+        normalized = normalize_phone(report.phone_number)
+        if not normalized:
+            raise HTTPException(status_code=404, detail="Number not found")
+        number = db.query(PhoneNumber).filter(PhoneNumber.phone_number == normalized).first()
+        if not number:
+            raise HTTPException(status_code=404, detail="Number not found")
+        if number.status != CallStatus.IN_QUEUE:
+            raise HTTPException(status_code=400, detail="Number not in queue")
 
     if report.call_allowed is not None:
         config = ensure_config(db)

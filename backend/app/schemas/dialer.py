@@ -26,7 +26,7 @@ class NextBatchResponse(BaseModel):
 
 
 class DialerReport(BaseModel):
-    number_id: int
+    number_id: int | None = Field(default=None, description="Optional when reporting by phone_number only")
     phone_number: str
     status: CallStatus
     reason: str | None = None
