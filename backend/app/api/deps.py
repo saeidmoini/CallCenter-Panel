@@ -5,12 +5,15 @@ from sqlalchemy.orm import Session
 from ..core.db import get_db
 from ..core.security import get_current_active_user
 from ..core.config import get_settings
+from ..models.user import UserRole
 
 settings = get_settings()
 http_bearer = HTTPBearer(auto_error=False)
 
 
 def get_active_admin(current_user=Depends(get_current_active_user)):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins only")
     return current_user
 
 

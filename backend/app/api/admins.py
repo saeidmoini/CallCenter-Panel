@@ -23,3 +23,9 @@ def create_admin(payload: AdminUserCreate, db: Session = Depends(get_db)):
 @router.put("/{user_id}", response_model=AdminUserOut)
 def update_admin(user_id: int, payload: AdminUserUpdate, db: Session = Depends(get_db)):
     return auth_service.update_admin_user(db, user_id, payload)
+
+
+@router.delete("/{user_id}")
+def delete_admin(user_id: int, db: Session = Depends(get_db)):
+    auth_service.delete_admin_user(db, user_id)
+    return {"deleted": True, "id": user_id}

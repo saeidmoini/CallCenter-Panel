@@ -11,7 +11,7 @@
   git:
     repo: "{{ repo_url }}"
     dest: "{{ project_root }}"
-    version: HEAD
+    version: "{{ repo_version | default('HEAD') }}"
     force: yes
   tags: ["deploy"]
 

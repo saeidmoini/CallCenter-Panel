@@ -43,10 +43,14 @@ const statusLabels: Record<string, string> = {
   IN_QUEUE: 'در صف تماس',
   MISSED: 'از دست رفته',
   CONNECTED: 'موفق',
-  FAILED: 'خطا دریافت شد',
+  FAILED: 'خطا',
   NOT_INTERESTED: 'عدم نیاز کاربر',
   HANGUP: 'قطع تماس توسط کاربر',
   DISCONNECTED: 'ناموفق',
+  BUSY: 'مشغول',
+  POWER_OFF: 'خاموش',
+  BANNED: 'بن شده',
+  UNKNOWN: 'نامشخص',
 }
 
 const statusColors: Record<string, string> = {
@@ -57,6 +61,10 @@ const statusColors: Record<string, string> = {
   NOT_INTERESTED: '#94a3b8',
   HANGUP: '#a855f7',
   DISCONNECTED: '#6b7280',
+  BUSY: '#f59e0b',
+  POWER_OFF: '#475569',
+  BANNED: '#ef476f',
+  UNKNOWN: '#0ea5e9',
 }
 
 const DashboardPage = () => {

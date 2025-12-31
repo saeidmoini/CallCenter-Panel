@@ -18,7 +18,8 @@ fileConfig(config.config_file_name)
 
 # pull database URL from .env via our settings
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Escape percent for ConfigParser interpolation
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

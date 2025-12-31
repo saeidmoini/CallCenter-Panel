@@ -16,7 +16,7 @@ const App = () => {
         <Route
           path="/"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <Layout>
                 <DashboardPage />
               </Layout>
@@ -36,7 +36,7 @@ const App = () => {
         <Route
           path="/schedule"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <Layout>
                 <SchedulePage />
               </Layout>
@@ -46,7 +46,7 @@ const App = () => {
         <Route
           path="/admins"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <Layout>
                 <AdminUsersPage />
               </Layout>

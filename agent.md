@@ -5,11 +5,11 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 ## Architecture
 - `backend/app/main.py` – FastAPI app, mounts routers and creates tables.
 - Core: `core/config.py` (Pydantic settings via `.env`), `core/db.py` (SQLAlchemy engine/session), `core/security.py` (bcrypt + JWT).
-- Models: `models/*` (AdminUser, PhoneNumber + CallStatus enum, ScheduleConfig/Window, CallAttempt, DialerBatch).
+- Models: `models/*` (AdminUser with `role` + profile fields, PhoneNumber + CallStatus enum, ScheduleConfig/Window, CallAttempt, DialerBatch).
 - Schemas: `schemas/*` Pydantic v2 models matching the API.
 - Services: business logic in `services/*` (auth, phone number validation/dedup, schedule evaluation, dialer batch selection and result logging, stats aggregations).
 - API layer: thin routers in `api/*` for auth, admins, schedule, numbers, dialer endpoints, and stats; dependencies in `api/deps.py`.
-- Frontend: Vite React app in `frontend/` with auth context, protected routes, basic pages for dashboard, numbers, schedule, and admin users. Tailwind config defines a `brand` palette.
+- Frontend: Vite React app in `frontend/` with auth context, protected routes, basic pages for dashboard, numbers, schedule, and admin users. Agents only see the Numbers page; add/import is hidden for them. Tailwind config defines a `brand` palette.
 
 ## Where to put things
 - New backend routes → `app/api/<area>.py`; schemas in `app/schemas`, logic in `app/services`, DB access in `app/models` (and `repositories` if you add that layer).
@@ -27,13 +27,16 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 - Schedule lives in `services/schedule_service.py`; day mapping is Saturday=0 … Friday=6 using Tehran time. `is_call_allowed` checks intervals, `enabled` (global switch), and `skip_holidays` (holiday detection stubbed) and returns retry hints. `schedule_version` increments on changes.
 - `/api/dialer/next-batch` **must** enforce schedule before selecting numbers and always returns `call_allowed` + `retry_after_seconds` (reason can be `disabled`, `holiday`, `outside_allowed_time_window`, etc.). Never move scheduling logic to the dialer side.
 - Global enable flag (`enabled`/`call_allowed`): when false, `/api/dialer/next-batch` returns `call_allowed=false` with reason `disabled`. Dialer can send `call_allowed` in `/api/dialer/report-result` to toggle this flag remotely; bump `schedule_version` when it changes.
+- Dialer contract additions: `next-batch` returns `active_agents` (id/full_name/phone) for the call center; `report-result` accepts `agent_id`/`agent_phone` and `user_message`, assigns the number to that agent, and stores the user message on both the attempt and the phone number.
 
 ## Number logic
 - Validation/normalization in `services/phone_service.py` (Iran mobile: normalized to `09` + 9 digits). Duplicates are ignored; response reports inserted/duplicate/invalid counts. Status updates allowed via admin API and dialer report.
+- Statuses: `IN_QUEUE`, `MISSED`, `CONNECTED`, `FAILED`, `NOT_INTERESTED`, `HANGUP`, `DISCONNECTED`, plus `BUSY`, `POWER_OFF`, `BANNED`, `UNKNOWN`. UI actions (single/bulk delete/reset/update) only allowed when current status is one of `IN_QUEUE`, `MISSED`, `BUSY`, `POWER_OFF`, `BANNED`; `UNKNOWN` is immutable like a successful call.
 - Bulk admin ops: `/api/numbers/bulk` supports `update_status`, `reset`, `delete` on selected ids or `select_all` with filters (status/search) and optional `excluded_ids`. `/api/numbers/stats` returns total for the current filter (used for select-all across pages). Keep bulk logic in `phone_service.bulk_action`.
+- Excel export: `/api/numbers/export` mirrors bulk selection semantics (ids or select_all + filters/exclusions) and returns XLSX with phone, status, attempts, timestamps, assigned agent, and last user message.
 
 ## Auth
-- Admins: JWT bearer. `get_current_active_user` from `core/security.py` guards admin routes. Passwords hashed with bcrypt.
+- Admins: JWT bearer. `get_current_active_user` from `core/security.py` guards routes; `get_active_admin` enforces `role=ADMIN` for admin-only areas. Passwords hashed with bcrypt. Roles: `ADMIN` (full access) vs `AGENT` (only Numbers endpoints/UI, filtered to their assigned numbers, add/import hidden).
 - Dialer API: shared token from `.env` validated by `api/deps.get_dialer_auth`.
 
 ## Config & environment
@@ -49,7 +52,7 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 - ASGI ready (uvicorn/gunicorn). Tables auto-create via `Base.metadata.create_all`; add Alembic migrations for production changes.
 - Keep dialer token secret; do not expose dialer routes without auth.
 - Ops automation lives under `deploy/ansible/` (roles for backend/frontend/nginx/systemd/ssl); systemd + nginx templates are in `roles/backend/templates/gunicorn.service.j2` and `roles/nginx/templates/site.conf.j2`.
-- Alembic scaffold (with initial `0001_initial`) is under `backend/alembic/`. Use `alembic revision --autogenerate` + `alembic upgrade head` when models change; ensure `DATABASE_URL` is set in `.env`.
+- Alembic scaffold (with `0001_initial`, `0002_roles_agents_and_statuses`) is under `backend/alembic/`. Use `alembic revision --autogenerate` + `alembic upgrade head` when models change; ensure `DATABASE_URL` is set in `.env`.
 - Ansible tags: `init` (one-time: DB/user creation, systemd unit, SSL/ACME, optional admin seed), `deploy` (git pull, pip with gunicorn, Alembic upgrade, systemd restart, nginx config/reload and removes default site), `frontend` (npm install/build), `ssl` (ACME/Arvan). For updates run `--tags deploy,frontend --skip-tags init,ssl`; first install run `--tags init,deploy,frontend,ssl`. Keep `initial_admin_user/password` empty after first seed to avoid repeats.
 - Queue safety: numbers assigned to a batch are locked; stale assignments auto-unlock after `ASSIGNMENT_TIMEOUT_MINUTES` (default 60) so they can return to IN_QUEUE if the dialer crashes.
 - Branch/vars discipline: `agrad` branch uses `deploy/ansible/group_vars/prod.yml`; `salehi` branch uses `deploy/ansible/group_vars/prod_salehi.yml`. Run Ansible with `-e env_variant=agrad|salehi` to pick the right vars.

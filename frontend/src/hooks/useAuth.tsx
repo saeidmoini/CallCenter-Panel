@@ -5,13 +5,18 @@ interface AdminUser {
   id: number
   username: string
   is_active: boolean
+  is_superuser?: boolean
+  role: 'ADMIN' | 'AGENT'
+  first_name?: string | null
+  last_name?: string | null
+  phone_number?: string | null
 }
 
 interface AuthContextValue {
   user: AdminUser | null
   token: string | null
   loading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string) => Promise<AdminUser>
   logout: () => void
 }
 
@@ -46,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(data.access_token)
     const me = await client.get<AdminUser>('/api/auth/me')
     setUser(me.data)
+    return me.data
   }
 
   const logout = () => {

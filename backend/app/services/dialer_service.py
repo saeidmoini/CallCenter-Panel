@@ -9,9 +9,11 @@ from ..core.config import get_settings
 from ..models.phone_number import PhoneNumber, CallStatus
 from ..models.dialer_batch import DialerBatch
 from ..models.call_attempt import CallAttempt
+from ..models.user import AdminUser, UserRole
 from ..schemas.dialer import DialerReport
 from .schedule_service import is_call_allowed, ensure_config, TEHRAN_TZ
 from .phone_service import normalize_phone
+from . import auth_service
 
 settings = get_settings()
 
@@ -60,11 +62,21 @@ def fetch_next_batch(db: Session, size: int | None = None):
     )
     db.commit()
 
+    agents = auth_service.list_active_agents(db)
+
     return {
         "call_allowed": True,
         "timezone": settings.timezone,
         "server_time": now,
         "schedule_version": config.version,
+        "active_agents": [
+            {
+                "id": agent.id,
+                "full_name": " ".join(filter(None, [agent.first_name, agent.last_name])).strip() or agent.username,
+                "phone_number": agent.phone_number,
+            }
+            for agent in agents
+        ],
         "batch": {
             "batch_id": batch_id,
             "size_requested": requested_size,
@@ -78,18 +90,20 @@ def fetch_next_batch(db: Session, size: int | None = None):
 
 
 def report_result(db: Session, report: DialerReport):
+    normalized_phone = normalize_phone(report.phone_number)
+    if not normalized_phone:
+        raise HTTPException(status_code=404, detail="Number not found")
     number: PhoneNumber | None = None
     if report.number_id is not None:
         number = db.get(PhoneNumber, report.number_id)
-        if not number or number.phone_number != report.phone_number:
+        if not number or number.phone_number != normalized_phone:
             raise HTTPException(status_code=404, detail="Number not found or mismatch")
     else:
-        normalized = normalize_phone(report.phone_number)
-        if not normalized:
-            raise HTTPException(status_code=404, detail="Number not found")
-        number = db.query(PhoneNumber).filter(PhoneNumber.phone_number == normalized).first()
+        number = db.query(PhoneNumber).filter(PhoneNumber.phone_number == normalized_phone).first()
         if not number:
             raise HTTPException(status_code=404, detail="Number not found")
+
+    agent = _resolve_agent(db, report)
 
     if report.call_allowed is not None:
         config = ensure_config(db)
@@ -104,12 +118,18 @@ def report_result(db: Session, report: DialerReport):
     number.last_status_change_at = datetime.now(timezone.utc)
     number.assigned_at = None
     number.assigned_batch_id = None
+    if report.user_message:
+        number.last_user_message = report.user_message
+    if agent:
+        number.assigned_agent_id = agent.id
     db.add(
         CallAttempt(
             phone_number_id=number.id,
             status=report.status.value,
             reason=report.reason,
             attempted_at=report.attempted_at,
+            agent_id=agent.id if agent else None,
+            user_message=report.user_message,
             created_at=datetime.now(timezone.utc),
         )
     )
@@ -135,3 +155,21 @@ def unlock_stale_assignments(db: Session) -> int:
     if stale:
         db.commit()
     return len(stale)
+
+
+def _resolve_agent(db: Session, report: DialerReport) -> AdminUser | None:
+    agent: AdminUser | None = None
+    if report.agent_id is not None:
+        agent = db.get(AdminUser, report.agent_id)
+    normalized_agent_phone = normalize_phone(report.agent_phone) if report.agent_phone else None
+    if not agent and normalized_agent_phone:
+        agent = (
+            db.query(AdminUser)
+            .filter(AdminUser.phone_number == normalized_agent_phone)
+            .first()
+        )
+    if agent and agent.role != UserRole.AGENT:
+        agent = None
+    if agent and not agent.is_active:
+        raise HTTPException(status_code=400, detail="Agent is inactive")
+    return agent

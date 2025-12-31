@@ -1,6 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import client from '../api/client'
 import dayjs from 'dayjs'
+import { useAuth } from '../hooks/useAuth'
+import DatePicker from 'react-multi-date-picker'
+import persian from 'react-date-object/calendars/persian'
+import persian_fa from 'react-date-object/locales/persian_fa'
+import gregorian from 'react-date-object/calendars/gregorian'
 
 interface PhoneNumber {
   id: number
@@ -9,16 +14,29 @@ interface PhoneNumber {
   total_attempts: number
   last_attempt_at?: string
   last_status_change_at?: string
+  last_user_message?: string | null
+  assigned_agent_id?: number | null
+  assigned_agent?: {
+    id: number
+    username: string
+    first_name?: string | null
+    last_name?: string | null
+    phone_number?: string | null
+  } | null
 }
 
 const statusLabels: Record<string, string> = {
   IN_QUEUE: 'در صف تماس',
   MISSED: 'از دست رفته',
   CONNECTED: 'موفق',
-  FAILED: 'خطا دریافت شد',
+  FAILED: 'خطا',
   NOT_INTERESTED: 'عدم نیاز کاربر',
   HANGUP: 'قطع تماس توسط کاربر',
   DISCONNECTED: 'ناموفق',
+  BUSY: 'مشغول',
+  POWER_OFF: 'خاموش',
+  BANNED: 'بن شده',
+  UNKNOWN: 'نامشخص',
 }
 
 const statusColors: Record<string, string> = {
@@ -29,12 +47,25 @@ const statusColors: Record<string, string> = {
   NOT_INTERESTED: 'bg-slate-200 text-slate-800',
   HANGUP: 'bg-purple-100 text-purple-800',
   DISCONNECTED: 'bg-gray-200 text-gray-800',
+  BUSY: 'bg-yellow-100 text-yellow-800',
+  POWER_OFF: 'bg-slate-100 text-slate-700',
+  BANNED: 'bg-rose-100 text-rose-700',
+  UNKNOWN: 'bg-blue-100 text-blue-800',
 }
 
+const modifiableStatuses = ['IN_QUEUE', 'MISSED', 'BUSY', 'POWER_OFF', 'BANNED']
+
 const NumbersPage = () => {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
+  const isSuper = !!user?.is_superuser
   const [numbers, setNumbers] = useState<PhoneNumber[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [search, setSearch] = useState('')
+  const [startDateValue, setStartDateValue] = useState<any>(null)
+  const [endDateValue, setEndDateValue] = useState<any>(null)
+  const [startDateIso, setStartDateIso] = useState<string | undefined>(undefined)
+  const [endDateIso, setEndDateIso] = useState<string | undefined>(undefined)
   const [newNumbers, setNewNumbers] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -52,6 +83,39 @@ const NumbersPage = () => {
   const [bulkStatus, setBulkStatus] = useState<string>('IN_QUEUE')
   const [sortBy, setSortBy] = useState<'created_at' | 'last_attempt_at' | 'status'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [exporting, setExporting] = useState(false)
+
+  const canModifyStatus = (status: string) => isSuper || modifiableStatuses.includes(status)
+  const isRowSelectable = (n: PhoneNumber) => canModifyStatus(n.status)
+  const handleStartDateChange = (value: any) => {
+    if (!value) {
+      setStartDateValue(null)
+      setStartDateIso(undefined)
+      setPage(0)
+      clearSelection()
+      return
+    }
+    const dateObj = Array.isArray(value) ? value[0] : value
+    setStartDateValue(dateObj)
+    setStartDateIso(dateObj.convert(gregorian).format('YYYY-MM-DD'))
+    setPage(0)
+    clearSelection()
+  }
+
+  const handleEndDateChange = (value: any) => {
+    if (!value) {
+      setEndDateValue(null)
+      setEndDateIso(undefined)
+      setPage(0)
+      clearSelection()
+      return
+    }
+    const dateObj = Array.isArray(value) ? value[0] : value
+    setEndDateValue(dateObj)
+    setEndDateIso(dateObj.convert(gregorian).format('YYYY-MM-DD'))
+    setPage(0)
+    clearSelection()
+  }
 
   const fetchNumbers = async () => {
     setLoading(true)
@@ -59,6 +123,8 @@ const NumbersPage = () => {
       params: {
         status: statusFilter || undefined,
         search: search || undefined,
+        start_date: startDateIso,
+        end_date: endDateIso,
         skip: page * pageSize,
         limit: pageSize,
         sort_by: sortBy,
@@ -75,6 +141,8 @@ const NumbersPage = () => {
       params: {
         status: statusFilter || undefined,
         search: search || undefined,
+        start_date: startDateIso,
+        end_date: endDateIso,
       },
     })
     setTotalCount(data.total)
@@ -83,7 +151,7 @@ const NumbersPage = () => {
   useEffect(() => {
     fetchNumbers()
     fetchStats()
-  }, [page, statusFilter, search, sortBy, sortOrder])
+  }, [page, statusFilter, search, sortBy, sortOrder, startDateIso, endDateIso])
 
   const clearSelection = () => {
     setSelectedIds(new Set())
@@ -93,6 +161,7 @@ const NumbersPage = () => {
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault()
+    if (!isAdmin) return
     const phone_numbers = newNumbers.split(/\n|,/).map((s) => s.trim()).filter(Boolean)
     if (!phone_numbers.length) return
     await client.post('/api/numbers', { phone_numbers })
@@ -102,11 +171,15 @@ const NumbersPage = () => {
   }
 
   const updateStatus = async (id: number, status: string) => {
+    const target = numbers.find((n) => n.id === id)
+    if (target && !canModifyStatus(target.status)) return
     await client.put(`/api/numbers/${id}/status`, { status })
     fetchNumbers()
   }
 
   const deleteNumber = async (id: number) => {
+    const target = numbers.find((n) => n.id === id)
+    if (target && !canModifyStatus(target.status)) return
     const ok = window.confirm('این شماره حذف شود؟')
     if (!ok) return
     await client.delete(`/api/numbers/${id}`)
@@ -125,6 +198,8 @@ const NumbersPage = () => {
   }
 
   const resetNumber = async (id: number) => {
+    const target = numbers.find((n) => n.id === id)
+    if (target && !canModifyStatus(target.status)) return
     await client.post(`/api/numbers/${id}/reset`)
     fetchNumbers()
   }
@@ -132,6 +207,7 @@ const NumbersPage = () => {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!isAdmin) return
     setUploading(true)
     setUploadMessage(null)
     try {
@@ -158,6 +234,8 @@ const NumbersPage = () => {
   }
 
   const toggleRow = (id: number) => {
+    const target = numbers.find((n) => n.id === id)
+    if (target && !isRowSelectable(target)) return
     if (selectAll) {
       const next = new Set(excludedIds)
       if (next.has(id)) {
@@ -178,7 +256,10 @@ const NumbersPage = () => {
   }
 
   const allVisibleSelected = useMemo(
-    () => numbers.length > 0 && numbers.every((n) => isRowSelected(n.id)),
+    () => {
+      const selectable = numbers.filter(isRowSelectable)
+      return selectable.length > 0 && selectable.every((n) => isRowSelected(n.id))
+    },
     [numbers, selectedIds, excludedIds, selectAll],
   )
 
@@ -186,6 +267,7 @@ const NumbersPage = () => {
     if (selectAll) {
       const next = new Set(excludedIds)
       numbers.forEach((n) => {
+        if (!isRowSelectable(n)) return
         if (allVisibleSelected) {
           next.add(n.id)
         } else {
@@ -196,6 +278,7 @@ const NumbersPage = () => {
     } else {
       const next = new Set(selectedIds)
       numbers.forEach((n) => {
+        if (!isRowSelectable(n)) return
         if (allVisibleSelected) {
           next.delete(n.id)
         } else {
@@ -213,6 +296,21 @@ const NumbersPage = () => {
       alert('هیچ ردیفی انتخاب نشده است')
       return
     }
+    if (selectAll && !statusFilter && !isSuper) {
+      alert('برای عملیات انتخاب همه، لطفا وضعیت قابل تغییر را فیلتر کنید (در صف/از دست رفته/مشغول/خاموش/بن‌شده)')
+      return
+    }
+    if (!selectAll) {
+      const selectedRows = numbers.filter((n) => selectedIds.has(n.id))
+      const invalid = selectedRows.filter((n) => !isRowSelectable(n))
+      if (invalid.length) {
+        alert('فقط وضعیت‌های در صف/از دست رفته/مشغول/خاموش/بن‌شده قابل تغییر یا حذف هستند')
+        return
+      }
+    } else if (statusFilter && !modifiableStatuses.includes(statusFilter) && !isSuper) {
+      alert('برای انتخاب همه، فیلتر وضعیت را روی یک وضعیت قابل تغییر بگذارید')
+      return
+    }
     if (bulkAction === 'delete') {
       const ok = window.confirm('حذف دسته‌جمعی انجام شود؟')
       if (!ok) return
@@ -224,6 +322,10 @@ const NumbersPage = () => {
       excluded_ids,
       filter_status: statusFilter || undefined,
       search: search || undefined,
+      start_date: startDateIso,
+      end_date: endDateIso,
+      sort_by: sortBy,
+      sort_order: sortOrder,
     }
     if (bulkAction === 'update_status') {
       payload.status = bulkStatus
@@ -234,7 +336,45 @@ const NumbersPage = () => {
     fetchStats()
   }
 
+  const handleExport = async () => {
+    const ids = selectAll ? [] : Array.from(selectedIds)
+    const excluded_ids = selectAll ? Array.from(excludedIds) : []
+    if (!selectAll && ids.length === 0) {
+      alert('برای خروجی گرفتن، ردیفی انتخاب کنید یا انتخاب همه را بزنید')
+      return
+    }
+    setExporting(true)
+    try {
+      const payload: any = {
+        ids,
+        select_all: selectAll,
+        excluded_ids,
+        filter_status: statusFilter || undefined,
+        search: search || undefined,
+        start_date: startDateIso,
+        end_date: endDateIso,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      }
+      const response = await client.post('/api/numbers/export', payload, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', 'numbers.xlsx')
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('خطا در دریافت خروجی اکسل')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const selectedCount = selectAll ? totalCount - excludedIds.size : selectedIds.size
+  const canBulk = selectAll ? totalCount > excludedIds.size : selectedIds.size > 0
+  const canExport = canBulk || selectAll
 
   const handleSort = (field: 'last_attempt_at' | 'status') => {
     if (sortBy === field) {
@@ -247,34 +387,36 @@ const NumbersPage = () => {
 
   return (
     <div className="space-y-6 px-2 md:px-0 max-w-full w-full min-w-0">
-      <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm w-full min-w-0">
-        <h2 className="font-semibold mb-3">افزودن شماره جدید</h2>
-        <div className="flex flex-col gap-6">
-          <div className="flex-1 space-y-2 w-full">
-            <label className="block text-sm font-medium text-slate-700">افزودن از فایل (یک ستون شماره)</label>
-            <input
-              type="file"
-              accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-              onChange={handleUpload}
-              className="block w-full text-sm text-slate-700 file:mr-4 file:rounded file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-white hover:file:bg-brand-700"
-              disabled={uploading}
-            />
-            {uploadMessage && <div className="text-xs text-slate-600">{uploadMessage}</div>}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm w-full min-w-0">
+          <h2 className="font-semibold mb-3">افزودن شماره جدید</h2>
+          <div className="flex flex-col gap-6">
+            <div className="flex-1 space-y-2 w-full">
+              <label className="block text-sm font-medium text-slate-700">افزودن از فایل (یک ستون شماره)</label>
+              <input
+                type="file"
+                accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={handleUpload}
+                className="block w-full text-sm text-slate-700 file:mr-4 file:rounded file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-white hover:file:bg-brand-700"
+                disabled={uploading}
+              />
+              {uploadMessage && <div className="text-xs text-slate-600">{uploadMessage}</div>}
+            </div>
+            <form className="flex-1 space-y-3 w-full" onSubmit={handleAdd}>
+              <textarea
+                className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                rows={3}
+                placeholder="هر خط یک شماره"
+                value={newNumbers}
+                onChange={(e) => setNewNumbers(e.target.value)}
+              />
+              <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700">
+                افزودن به صف
+              </button>
+            </form>
           </div>
-          <form className="flex-1 space-y-3 w-full" onSubmit={handleAdd}>
-            <textarea
-              className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
-              rows={3}
-              placeholder="هر خط یک شماره"
-              value={newNumbers}
-              onChange={(e) => setNewNumbers(e.target.value)}
-            />
-            <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700">
-              افزودن به صف
-            </button>
-          </form>
         </div>
-      </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm w-full min-w-0">
         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -301,8 +443,28 @@ const NumbersPage = () => {
               clearSelection()
               setSearch(e.target.value)
             }}
-            placeholder="جستجوی شماره"
+            placeholder="جستجوی شماره یا کارشناس"
             className="rounded border border-slate-200 px-2 py-1 text-sm"
+          />
+          <DatePicker
+            value={startDateValue}
+            onChange={handleStartDateChange}
+            calendar={persian}
+            locale={persian_fa}
+            calendarPosition="bottom-right"
+            format="YYYY/MM/DD"
+            placeholder="از تاریخ"
+            inputClass="rounded border border-slate-200 px-2 py-1 text-sm w-[140px] text-right"
+          />
+          <DatePicker
+            value={endDateValue}
+            onChange={handleEndDateChange}
+            calendar={persian}
+            locale={persian_fa}
+            calendarPosition="bottom-right"
+            format="YYYY/MM/DD"
+            placeholder="تا تاریخ"
+            inputClass="rounded border border-slate-200 px-2 py-1 text-sm w-[140px] text-right"
           />
           <button onClick={() => { setPage(0); fetchNumbers(); fetchStats(); }} className="rounded bg-slate-900 text-white px-3 py-1 text-sm">
             بروزرسانی
@@ -356,11 +518,21 @@ const NumbersPage = () => {
             )}
             <button
               className="rounded bg-brand-500 text-white px-3 py-1 text-sm disabled:opacity-50"
-              disabled={selectedCount === 0}
+              disabled={!canBulk}
               onClick={handleBulk}
             >
               اعمال
             </button>
+            <button
+              className="rounded border border-slate-200 px-3 py-1 text-sm disabled:opacity-50"
+              disabled={!canExport || exporting}
+              onClick={handleExport}
+            >
+              {exporting ? 'در حال آماده‌سازی...' : 'خروجی اکسل'}
+            </button>
+            <div className="text-[11px] text-slate-500">
+              عملیات فقط روی وضعیت‌های در صف، از دست رفته، مشغول، خاموش و بن‌شده انجام می‌شود.
+            </div>
           </div>
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs text-slate-600">صفحه {page + 1}</span>
@@ -384,7 +556,7 @@ const NumbersPage = () => {
           <div className="text-sm">در حال بارگذاری...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-sm text-right whitespace-nowrap">
+            <table className="w-full min-w-[900px] text-sm text-right whitespace-nowrap">
               <thead>
                 <tr className="text-slate-500">
                   <th className="py-2 text-right w-10">
@@ -398,6 +570,8 @@ const NumbersPage = () => {
                   <th className="text-right w-32 cursor-pointer select-none" onClick={() => handleSort('last_attempt_at')}>
                     آخرین تلاش {sortBy === 'last_attempt_at' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
+                  <th className="text-right w-40">کارشناس</th>
+                  <th className="text-right w-64">پیام تماس</th>
                   <th className="text-right w-80">اقدامات</th>
                 </tr>
               </thead>
@@ -405,7 +579,13 @@ const NumbersPage = () => {
                 {numbers.map((n) => (
                   <tr key={n.id} className="border-t">
                     <td className="py-2 text-right">
-                      <input type="checkbox" checked={isRowSelected(n.id)} onChange={() => toggleRow(n.id)} />
+                      <input
+                        type="checkbox"
+                        checked={isRowSelectable(n) && isRowSelected(n.id)}
+                        onChange={() => toggleRow(n.id)}
+                        disabled={!isRowSelectable(n)}
+                        title={!isRowSelectable(n) && !isSuper ? 'این وضعیت قابل تغییر یا حذف نیست' : ''}
+                      />
                     </td>
                     <td className="py-2 font-mono text-xs">{n.phone_number}</td>
                     <td className="text-right">
@@ -419,12 +599,33 @@ const NumbersPage = () => {
                     <td className="text-right">
                       {n.last_attempt_at ? dayjs(n.last_attempt_at).calendar('jalali').format('YYYY/MM/DD HH:mm') : '-'}
                     </td>
+                    <td className="text-right">
+                      {n.assigned_agent ? (
+                        <div className="space-y-0.5">
+                          <div className="text-sm">
+                            {`${(n.assigned_agent.first_name || '')} ${(n.assigned_agent.last_name || '')}`.trim() ||
+                              n.assigned_agent.username}
+                          </div>
+                          {n.assigned_agent.phone_number && (
+                            <div className="text-xs text-slate-500 font-mono">{n.assigned_agent.phone_number}</div>
+                          )}
+                        </div>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className="text-right max-w-[260px]">
+                      <div className="text-xs text-slate-700 truncate" title={n.last_user_message || ''}>
+                        {n.last_user_message || '-'}
+                      </div>
+                    </td>
                     <td className="text-right w-80">
                       <div className="flex items-center justify-start gap-4">
                         <select
                           className="rounded border border-slate-200 px-2 py-1 text-xs w-40"
                           value={n.status}
                           onChange={(e) => updateStatus(n.id, e.target.value)}
+                          disabled={!canModifyStatus(n.status)}
                         >
                           {Object.keys(statusLabels).map((key) => (
                             <option key={key} value={key}>
@@ -436,6 +637,7 @@ const NumbersPage = () => {
                           className="text-xs text-amber-700 ml-2"
                           onClick={() => resetNumber(n.id)}
                           title="بازگشت به صف"
+                          disabled={!canModifyStatus(n.status)}
                         >
                           ریست
                         </button>
@@ -443,6 +645,7 @@ const NumbersPage = () => {
                           className="text-xs text-red-600"
                           onClick={() => deleteNumber(n.id)}
                           title="حذف شماره"
+                          disabled={!canModifyStatus(n.status)}
                         >
                           حذف
                         </button>

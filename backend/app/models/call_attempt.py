@@ -13,7 +13,14 @@ class CallAttempt(Base):
     phone_number_id: Mapped[int] = mapped_column(ForeignKey("phone_numbers.id"), index=True)
     status: Mapped[CallStatus] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    user_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     phone_number = relationship("PhoneNumber")
+    agent = relationship("AdminUser")

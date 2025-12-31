@@ -3,16 +3,18 @@ import { useAuth } from '../hooks/useAuth'
 import { useState } from 'react'
 
 const navItems = [
-  { to: '/', label: 'داشبورد' },
-  { to: '/numbers', label: 'مدیریت شماره‌ها' },
-  { to: '/schedule', label: 'زمان‌بندی تماس' },
-  { to: '/admins', label: 'مدیریت مدیران' },
+  { to: '/', label: 'داشبورد', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
+  { to: '/numbers', label: 'مدیریت شماره‌ها', roles: ['ADMIN', 'AGENT'] as Array<'ADMIN' | 'AGENT'> },
+  { to: '/schedule', label: 'زمان‌بندی تماس', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
+  { to: '/admins', label: 'مدیریت مدیران', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
 ]
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const isAdmin = user?.role === 'ADMIN'
+  const availableNav = navItems.filter((item) => !item.roles || item.roles.includes(user?.role || 'ADMIN'))
 
   const handleLogout = () => {
     logout()
@@ -33,7 +35,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </button>
         </div>
         <nav className="space-y-2">
-          {navItems.map((item) => (
+          {availableNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

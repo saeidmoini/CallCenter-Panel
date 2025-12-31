@@ -15,8 +15,8 @@ const LoginPage = () => {
     setLoading(true)
     setError(null)
     try {
-      await login(username, password)
-      navigate('/')
+      const me = await login(username, password)
+      navigate(me.role === 'AGENT' ? '/numbers' : '/')
     } catch (err) {
       setError('ورود ناموفق بود')
     } finally {
