@@ -1,6 +1,7 @@
 project_name: salehi-panel
 project_root: /opt/salehi-panel
-repo_url: https://github.com/saeidmoini/salehi-panel.git
+repo_url: https://github.com/saeidmoini/CallCenter-Panel.git
+repo_version: salehi
 project_user: root           # change per project/server
 project_group: root
 
