@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useCompany } from '../hooks/useCompany'
 import client from '../api/client'
 
 interface ScheduleInterval {
@@ -16,6 +17,7 @@ interface ScheduleConfig {
 const dayNames = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه']
 
 const SchedulePage = () => {
+  const { company } = useCompany()
   const [config, setConfig] = useState<ScheduleConfig | null>(null)
   const [skipHolidays, setSkipHolidays] = useState(true)
   const [intervals, setIntervals] = useState<ScheduleInterval[]>([])
@@ -23,15 +25,18 @@ const SchedulePage = () => {
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const fetchConfig = async () => {
-    const { data } = await client.get<ScheduleConfig>('/api/schedule')
+    if (!company) return
+    const { data } = await client.get<ScheduleConfig>(`/api/${company.name}/schedule`)
     setConfig(data)
     setSkipHolidays(data.skip_holidays)
     setIntervals(data.intervals)
   }
 
   useEffect(() => {
-    fetchConfig()
-  }, [])
+    if (company) {
+      fetchConfig()
+    }
+  }, [company])
 
   const addInterval = () => {
     setIntervals([...intervals, { day_of_week: 0, start_time: '09:00', end_time: '18:00' }])
@@ -48,10 +53,11 @@ const SchedulePage = () => {
   }
 
   const save = async () => {
+    if (!company) return
     setSaving(true)
     setSaveMessage(null)
     try {
-      await client.put('/api/schedule', { skip_holidays: skipHolidays, intervals })
+      await client.put(`/api/${company.name}/schedule`, { skip_holidays: skipHolidays, intervals })
       setSaveMessage({ type: 'success', text: 'تغییرات ذخیره شد' })
       fetchConfig()
     } catch (e) {

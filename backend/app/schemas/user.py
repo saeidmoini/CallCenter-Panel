@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel
-from ..models.user import UserRole
+from ..models.user import UserRole, AgentType
 
 
 class AdminUserBase(BaseModel):
@@ -11,6 +11,8 @@ class AdminUserBase(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     phone_number: str | None = None
+    company_id: int | None = None
+    agent_type: AgentType = AgentType.BOTH
 
 
 class AdminUserCreate(AdminUserBase):
@@ -26,6 +28,8 @@ class AdminUserUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     phone_number: str | None = None
+    company_id: int | None = None
+    agent_type: AgentType | None = None
 
 
 class AdminUserOut(BaseModel):
@@ -37,6 +41,9 @@ class AdminUserOut(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     phone_number: str | None = None
+    company_id: int | None = None
+    company_name: str | None = None
+    agent_type: AgentType | None = None
     created_at: datetime
     updated_at: datetime | None
 

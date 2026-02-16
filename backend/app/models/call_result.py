@@ -6,11 +6,14 @@ from ..core.db import Base
 from .phone_number import CallStatus
 
 
-class CallAttempt(Base):
-    __tablename__ = "call_attempts"
+class CallResult(Base):
+    __tablename__ = "call_results"  # Renamed from call_attempts
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    phone_number_id: Mapped[int] = mapped_column(ForeignKey("phone_numbers.id"), index=True)
+    phone_number_id: Mapped[int] = mapped_column(ForeignKey("numbers.id"), index=True)  # Updated FK reference
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True, nullable=True)
+    scenario_id: Mapped[int | None] = mapped_column(ForeignKey("scenarios.id"), nullable=True)
+    outbound_line_id: Mapped[int | None] = mapped_column(ForeignKey("outbound_lines.id"), nullable=True)
     status: Mapped[CallStatus] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     user_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
@@ -19,8 +22,12 @@ class CallAttempt(Base):
         index=True,
         nullable=True,
     )
-    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    # Relationships
     phone_number = relationship("PhoneNumber")
+    company = relationship("Company")
+    scenario = relationship("Scenario")
+    outbound_line = relationship("OutboundLine")
     agent = relationship("AdminUser")

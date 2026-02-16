@@ -16,7 +16,15 @@ const LoginPage = () => {
     setError(null)
     try {
       const me = await login(username, password)
-      navigate(me.role === 'AGENT' ? '/numbers' : '/')
+
+      // Redirect based on user type and company
+      if (me.is_superuser) {
+        navigate('/admin/companies')
+      } else if (me.company_name) {
+        navigate(`/${me.company_name}/dashboard`)
+      } else {
+        setError('کاربر به شرکتی اختصاص داده نشده است')
+      }
     } catch (err) {
       setError('ورود ناموفق بود')
     } finally {

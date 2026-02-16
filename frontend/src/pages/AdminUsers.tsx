@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { useCompany } from '../hooks/useCompany'
 import client from '../api/client'
 
 interface AdminUser {
@@ -10,34 +11,44 @@ interface AdminUser {
   first_name?: string | null
   last_name?: string | null
   phone_number?: string | null
+  company_id?: number | null
+  company_name?: string | null
+  agent_type?: 'INBOUND' | 'OUTBOUND' | 'BOTH'
 }
 
 const AdminUsersPage = () => {
+  const { company } = useCompany()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [role, setRole] = useState<'ADMIN' | 'AGENT'>('AGENT')
+  const [agentType, setAgentType] = useState<'INBOUND' | 'OUTBOUND' | 'BOTH'>('BOTH')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
 
   const fetchUsers = async () => {
-    const { data } = await client.get<AdminUser[]>('/api/admins')
+    if (!company) return
+    const { data } = await client.get<AdminUser[]>(`/api/${company.name}/admins`)
     setUsers(data)
   }
 
   useEffect(() => {
-    fetchUsers()
-  }, [])
+    if (company) {
+      fetchUsers()
+    }
+  }, [company])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    await client.post('/api/admins', {
+    if (!company) return
+    await client.post(`/api/${company.name}/admins`, {
       username,
       password,
       is_active: isActive,
       role,
+      agent_type: agentType,
       first_name: firstName || null,
       last_name: lastName || null,
       phone_number: phoneNumber || null,
@@ -46,6 +57,7 @@ const AdminUsersPage = () => {
     setPassword('')
     setIsActive(true)
     setRole('AGENT')
+    setAgentType('BOTH')
     setFirstName('')
     setLastName('')
     setPhoneNumber('')
@@ -53,7 +65,8 @@ const AdminUsersPage = () => {
   }
 
   const toggleActive = async (user: AdminUser) => {
-    await client.put(`/api/admins/${user.id}`, { is_active: !user.is_active })
+    if (!company) return
+    await client.put(`/api/${company.name}/admins/${user.id}`, { is_active: !user.is_active })
     fetchUsers()
   }
 
@@ -88,6 +101,18 @@ const AdminUsersPage = () => {
             >
               <option value="AGENT">کارشناس فروش</option>
               <option value="ADMIN">مدیر</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-slate-600">نوع اپراتور</label>
+            <select
+              className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+              value={agentType}
+              onChange={(e) => setAgentType(e.target.value as 'INBOUND' | 'OUTBOUND' | 'BOTH')}
+            >
+              <option value="BOTH">ورودی و خروجی (هردو)</option>
+              <option value="INBOUND">فقط ورودی</option>
+              <option value="OUTBOUND">فقط خروجی</option>
             </select>
           </div>
           <div>
@@ -135,6 +160,7 @@ const AdminUsersPage = () => {
               <th className="py-2">نام کاربری</th>
               <th>نام و نام خانوادگی</th>
               <th>نقش</th>
+              <th>نوع اپراتور</th>
               <th>شماره تماس</th>
               <th>وضعیت</th>
               <th></th>
@@ -148,6 +174,12 @@ const AdminUsersPage = () => {
                   {`${(u.first_name || '')} ${(u.last_name || '')}`.trim() || '—'}
                 </td>
                 <td>{u.role === 'ADMIN' ? 'مدیر' : 'کارشناس'}</td>
+                <td className="text-xs">
+                  {u.agent_type === 'INBOUND' && 'ورودی'}
+                  {u.agent_type === 'OUTBOUND' && 'خروجی'}
+                  {u.agent_type === 'BOTH' && 'هردو'}
+                  {!u.agent_type && '—'}
+                </td>
                 <td className="font-mono text-xs">{u.phone_number || '—'}</td>
                 <td>{u.is_active ? 'فعال' : 'غیرفعال'}</td>
                 <td className="space-x-3 space-x-reverse">
@@ -161,9 +193,10 @@ const AdminUsersPage = () => {
                       <button
                         className="text-xs text-red-600"
                         onClick={async () => {
+                          if (!company) return
                           const ok = window.confirm('کاربر حذف شود؟')
                           if (!ok) return
-                          await client.delete(`/api/admins/${u.id}`)
+                          await client.delete(`/api/${company.name}/admins/${u.id}`)
                           fetchUsers()
                         }}
                       >

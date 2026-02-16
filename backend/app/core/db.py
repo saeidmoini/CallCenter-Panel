@@ -86,27 +86,35 @@ def _ensure_admin_columns():
 
 
 def _ensure_phone_columns():
+    """Ensure numbers table has required columns (renamed from phone_numbers)."""
     try:
         with engine.begin() as conn:
             inspector = inspect(conn)
-            columns = {col["name"] for col in inspector.get_columns("phone_numbers")}
+            # Try new table name first, fall back to old name
+            try:
+                columns = {col["name"] for col in inspector.get_columns("numbers")}
+                table_name = "numbers"
+            except Exception:
+                columns = {col["name"] for col in inspector.get_columns("phone_numbers")}
+                table_name = "phone_numbers"
+
             if "last_user_message" not in columns:
-                conn.execute(text("ALTER TABLE phone_numbers ADD COLUMN IF NOT EXISTS last_user_message VARCHAR(1000)"))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS last_user_message VARCHAR(1000)"))
             if "assigned_agent_id" not in columns:
-                conn.execute(text("ALTER TABLE phone_numbers ADD COLUMN IF NOT EXISTS assigned_agent_id INTEGER"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_phone_numbers_assigned_agent_id ON phone_numbers (assigned_agent_id)"))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS assigned_agent_id INTEGER"))
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_assigned_agent_id ON {table_name} (assigned_agent_id)"))
             conn.execute(
                 text(
-                    """
+                    f"""
                     DO $$
                     BEGIN
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.table_constraints
-                            WHERE constraint_name = 'fk_phone_numbers_assigned_agent'
-                              AND table_name = 'phone_numbers'
+                            WHERE constraint_name = 'fk_{table_name}_assigned_agent'
+                              AND table_name = '{table_name}'
                         ) THEN
-                            ALTER TABLE phone_numbers
-                            ADD CONSTRAINT fk_phone_numbers_assigned_agent
+                            ALTER TABLE {table_name}
+                            ADD CONSTRAINT fk_{table_name}_assigned_agent
                             FOREIGN KEY (assigned_agent_id)
                             REFERENCES admin_users(id)
                             ON DELETE SET NULL;
@@ -120,28 +128,36 @@ def _ensure_phone_columns():
         pass
 
 
-def _ensure_call_attempt_columns():
+def _ensure_call_result_columns():
+    """Ensure call_results table has required columns (renamed from call_attempts)."""
     try:
         with engine.begin() as conn:
             inspector = inspect(conn)
-            columns = {col["name"] for col in inspector.get_columns("call_attempts")}
+            # Try new table name first, fall back to old name
+            try:
+                columns = {col["name"] for col in inspector.get_columns("call_results")}
+                table_name = "call_results"
+            except Exception:
+                columns = {col["name"] for col in inspector.get_columns("call_attempts")}
+                table_name = "call_attempts"
+
             if "user_message" not in columns:
-                conn.execute(text("ALTER TABLE call_attempts ADD COLUMN IF NOT EXISTS user_message VARCHAR(1000)"))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS user_message VARCHAR(1000)"))
             if "agent_id" not in columns:
-                conn.execute(text("ALTER TABLE call_attempts ADD COLUMN IF NOT EXISTS agent_id INTEGER"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_call_attempts_agent_id ON call_attempts (agent_id)"))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS agent_id INTEGER"))
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_agent_id ON {table_name} (agent_id)"))
             conn.execute(
                 text(
-                    """
+                    f"""
                     DO $$
                     BEGIN
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.table_constraints
-                            WHERE constraint_name = 'fk_call_attempts_agent'
-                              AND table_name = 'call_attempts'
+                            WHERE constraint_name = 'fk_{table_name}_agent'
+                              AND table_name = '{table_name}'
                         ) THEN
-                            ALTER TABLE call_attempts
-                            ADD CONSTRAINT fk_call_attempts_agent
+                            ALTER TABLE {table_name}
+                            ADD CONSTRAINT fk_{table_name}_agent
                             FOREIGN KEY (agent_id)
                             REFERENCES admin_users(id)
                             ON DELETE SET NULL;
@@ -158,7 +174,7 @@ def _ensure_call_attempt_columns():
 _ensure_callstatus_enum()
 _ensure_admin_columns()
 _ensure_phone_columns()
-_ensure_call_attempt_columns()
+_ensure_call_result_columns()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=Session)
 Base = declarative_base()

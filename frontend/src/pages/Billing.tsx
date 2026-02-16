@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { useCompany } from '../hooks/useCompany'
 import client from '../api/client'
 
 interface BillingInfo {
@@ -8,6 +9,7 @@ interface BillingInfo {
 }
 
 const BillingPage = () => {
+  const { company } = useCompany()
   const [data, setData] = useState<BillingInfo | null>(null)
   const [wallet, setWallet] = useState<number | ''>('')
   const [rate, setRate] = useState<number | ''>('')
@@ -15,21 +17,25 @@ const BillingPage = () => {
   const [message, setMessage] = useState<string | null>(null)
 
   const fetchInfo = async () => {
-    const { data } = await client.get<BillingInfo>('/api/billing')
+    if (!company) return
+    const { data } = await client.get<BillingInfo>(`/api/${company.name}/billing`)
     setData(data)
     setWallet(data.wallet_balance)
     setRate(data.cost_per_connected)
   }
 
   useEffect(() => {
-    fetchInfo()
-  }, [])
+    if (company) {
+      fetchInfo()
+    }
+  }, [company])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!company) return
     setSaving(true)
     setMessage(null)
-    await client.put('/api/billing', {
+    await client.put(`/api/${company.name}/billing`, {
       wallet_balance: wallet === '' ? undefined : wallet,
       cost_per_connected: rate === '' ? undefined : rate,
     })

@@ -1,23 +1,59 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useState } from 'react'
+import { useCompany } from '../hooks/useCompany'
+import { useState, useEffect } from 'react'
+import client from '../api/client'
 
-const navItems = [
-  { to: '/', label: 'داشبورد', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
-  { to: '/numbers', label: 'مدیریت شماره‌ها', roles: ['ADMIN', 'AGENT'] as Array<'ADMIN' | 'AGENT'> },
-  { to: '/schedule', label: 'زمان‌بندی تماس', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
-  { to: '/billing', label: 'تنظیمات هزینه', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'>, superOnly: true },
-  { to: '/admins', label: 'مدیریت مدیران', roles: ['ADMIN'] as Array<'ADMIN' | 'AGENT'> },
-  { to: '/profile', label: 'حساب کاربری', roles: ['ADMIN', 'AGENT'] as Array<'ADMIN' | 'AGENT'> },
-]
+interface CompanyOption {
+  name: string
+  display_name: string
+}
+
+interface NavItem {
+  path: string
+  label: string
+  roles: Array<'ADMIN' | 'AGENT'>
+  superuserOnly?: boolean
+}
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
-  const isAdmin = user?.role === 'ADMIN'
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+
+  // Company context might be null for admin routes like /admin/companies
+  let company = null
+  try {
+    const ctx = useCompany()
+    company = ctx?.company
+  } catch (e) {
+    // Not in a company-scoped route
+  }
+
+  useEffect(() => {
+    if (user?.is_superuser) {
+      client.get<CompanyOption[]>('/api/companies/').then(({ data }) => {
+        setCompanies(data)
+      }).catch(() => {})
+    }
+  }, [user?.is_superuser])
+
+  // Build nav items dynamically based on company context
+  const navItems: NavItem[] = company ? [
+    { path: `/${company.name}/dashboard`, label: 'داشبورد', roles: ['ADMIN'] },
+    { path: `/${company.name}/numbers`, label: 'مدیریت شماره‌ها', roles: ['ADMIN', 'AGENT'] },
+    { path: `/${company.name}/schedule`, label: 'زمان‌بندی تماس', roles: ['ADMIN'] },
+    { path: `/${company.name}/billing`, label: 'تنظیمات مالی', roles: ['ADMIN'] },
+    { path: `/${company.name}/admins`, label: 'مدیریت کاربران', roles: ['ADMIN'] },
+    { path: `/${company.name}/scenarios`, label: 'سناریوها', roles: ['ADMIN'] },
+    { path: `/${company.name}/outbound-lines`, label: 'خطوط خروجی', roles: ['ADMIN'], superuserOnly: true },
+    { path: `/${company.name}/profile`, label: 'حساب کاربری', roles: ['ADMIN', 'AGENT'] },
+  ] : []
+
   const availableNav = navItems.filter((item) => {
-    if (item.superOnly && !user?.is_superuser) return false
+    if (item.superuserOnly && !user?.is_superuser) return false
     return !item.roles || item.roles.includes(user?.role || 'ADMIN')
   })
 
@@ -42,8 +78,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <nav className="space-y-2">
           {availableNav.map((item) => (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={item.path}
+              to={item.path}
               className={({ isActive }) =>
                 `block rounded px-3 py-2 text-sm font-medium hover:bg-slate-100 text-right ${
                   isActive ? 'bg-slate-200' : ''
@@ -66,10 +102,35 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               منو
             </button>
-            <div className="font-semibold">به پنل مدیریت خوش آمدید</div>
+            <div className="font-semibold">
+              {company ? company.display_name : 'پنل مدیریت'}
+            </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
             <div>{user?.username}</div>
+            {/* Company switcher for super admin */}
+            {user?.is_superuser && company && companies.length > 1 && (
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                {companies.map((c) => (
+                  <button
+                    key={c.name}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      c.name === company!.name
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    onClick={() => {
+                      if (c.name !== company!.name) {
+                        const currentPath = location.pathname.replace(`/${company!.name}`, `/${c.name}`)
+                        navigate(currentPath)
+                      }
+                    }}
+                  >
+                    {c.display_name}
+                  </button>
+                ))}
+              </div>
+            )}
             <button onClick={handleLogout} className="rounded bg-slate-900 text-white px-3 py-1 text-xs">
               خروج
             </button>

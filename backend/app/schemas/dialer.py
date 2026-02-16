@@ -21,6 +21,13 @@ class DialerAgent(BaseModel):
     phone_number: str | None = None
 
 
+class ScenarioSimple(BaseModel):
+    """Simplified scenario schema for dialer responses"""
+    id: int
+    name: str
+    display_name: str
+
+
 class NextBatchResponse(BaseModel):
     call_allowed: bool
     timezone: str = "Asia/Tehran"
@@ -29,12 +36,18 @@ class NextBatchResponse(BaseModel):
     reason: str | None = None
     retry_after_seconds: int | None = None
     batch: DialerBatchOut | None = None
-    active_agents: list[DialerAgent] = []
+    active_scenarios: list[ScenarioSimple] = []
+    inbound_agents: list[DialerAgent] = []
+    outbound_agents: list[DialerAgent] = []
+    # Deprecated: active_agents (replaced by inbound_agents + outbound_agents)
 
 
 class DialerReport(BaseModel):
     number_id: int | None = Field(default=None, description="Optional when reporting by phone_number only")
     phone_number: str
+    company: str = Field(..., description="Company slug (e.g., 'salehi')")
+    scenario_id: int | None = Field(default=None, description="Scenario ID for this call")
+    outbound_line_id: int | None = Field(default=None, description="Outbound line ID used for this call")
     status: CallStatus
     reason: str | None = None
     attempted_at: datetime

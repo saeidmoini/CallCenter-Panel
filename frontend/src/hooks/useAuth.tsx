@@ -10,6 +10,9 @@ interface AdminUser {
   first_name?: string | null
   last_name?: string | null
   phone_number?: string | null
+  company_id?: number | null
+  company_name?: string | null
+  agent_type?: 'INBOUND' | 'OUTBOUND' | 'BOTH'
 }
 
 interface AuthContextValue {

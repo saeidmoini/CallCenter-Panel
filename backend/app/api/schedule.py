@@ -1,18 +1,25 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..api.deps import get_active_admin
+from ..api.deps import get_active_admin, get_company, get_company_user
 from ..core.db import get_db
 from ..services import schedule_service
 from ..schemas.schedule import ScheduleConfigOut, ScheduleConfigUpdate, ScheduleInterval
+from ..models.company import Company
+from ..models.user import AdminUser
 
-router = APIRouter(dependencies=[Depends(get_active_admin)])
+router = APIRouter()
 
 
-@router.get("/", response_model=ScheduleConfigOut)
-def get_schedule(db: Session = Depends(get_db)):
-    config = schedule_service.get_config(db)
-    intervals = schedule_service.list_intervals(db)
+@router.get("/{company_name}/schedule", response_model=ScheduleConfigOut, dependencies=[Depends(get_active_admin)])
+def get_schedule(
+    company: Company = Depends(get_company),
+    user: AdminUser = Depends(get_company_user),
+    db: Session = Depends(get_db),
+):
+    """Get company schedule configuration"""
+    config = schedule_service.get_config(db, company_id=company.id)
+    intervals = schedule_service.list_intervals(db, company_id=company.id)
     return ScheduleConfigOut(
         skip_holidays=config.skip_holidays,
         enabled=config.enabled,
@@ -28,10 +35,16 @@ def get_schedule(db: Session = Depends(get_db)):
     )
 
 
-@router.put("/", response_model=ScheduleConfigOut)
-def update_schedule(payload: ScheduleConfigUpdate, db: Session = Depends(get_db)):
-    config = schedule_service.update_schedule(db, payload)
-    intervals = schedule_service.list_intervals(db)
+@router.put("/{company_name}/schedule", response_model=ScheduleConfigOut, dependencies=[Depends(get_active_admin)])
+def update_schedule(
+    payload: ScheduleConfigUpdate,
+    company: Company = Depends(get_company),
+    user: AdminUser = Depends(get_company_user),
+    db: Session = Depends(get_db),
+):
+    """Update company schedule configuration"""
+    config = schedule_service.update_schedule(db, payload, company_id=company.id)
+    intervals = schedule_service.list_intervals(db, company_id=company.id)
     return ScheduleConfigOut(
         skip_holidays=config.skip_holidays,
         enabled=config.enabled,

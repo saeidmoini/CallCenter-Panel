@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from ..core.db import get_db
 from ..core.security import get_current_active_user
 from ..core.config import get_settings
-from ..models.user import UserRole
+from ..models.user import UserRole, AdminUser
+from ..models.company import Company
 
 settings = get_settings()
 http_bearer = HTTPBearer(auto_error=False)
@@ -27,6 +28,26 @@ def get_dialer_auth(credentials: HTTPAuthorizationCredentials = Depends(http_bea
     if not credentials or credentials.credentials != settings.dialer_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid dialer token")
     return True
+
+
+def get_company(company_name: str, db: Session = Depends(get_db)) -> Company:
+    """Resolve company from path parameter or query string."""
+    company = db.query(Company).filter(Company.name == company_name, Company.is_active == True).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+def get_company_user(
+    current_user: AdminUser = Depends(get_current_active_user),
+    company: Company = Depends(get_company),
+) -> AdminUser:
+    """Verify user has access to the specified company."""
+    if current_user.is_superuser:
+        return current_user
+    if current_user.company_id != company.id:
+        raise HTTPException(status_code=403, detail="Access denied to this company")
+    return current_user
 
 
 def db_session() -> Session:

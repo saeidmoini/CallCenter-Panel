@@ -14,13 +14,18 @@ settings = get_settings()
 TEHRAN_TZ = ZoneInfo(settings.timezone)
 
 
-def ensure_config(db: Session) -> ScheduleConfig:
+def ensure_config(db: Session, company_id: int | None = None) -> ScheduleConfig:
+    """Get or create schedule config for a company"""
     _ensure_enabled_column(db)
     _ensure_disabled_by_dialer_column(db)
     _ensure_billing_columns(db)
-    config = db.get(ScheduleConfig, 1)
+
+    # Find config by company_id
+    config = db.query(ScheduleConfig).filter_by(company_id=company_id).first()
+
     if not config:
         config = ScheduleConfig(
+            company_id=company_id,
             skip_holidays=settings.skip_holidays_default,
             enabled=True,
             disabled_by_dialer=False,
@@ -77,24 +82,26 @@ def _ensure_billing_columns(db: Session) -> None:
         db.commit()
 
 
-def get_config(db: Session) -> ScheduleConfig:
-    return ensure_config(db)
+def get_config(db: Session, company_id: int | None = None) -> ScheduleConfig:
+    return ensure_config(db, company_id=company_id)
 
 
-def list_intervals(db: Session) -> list[ScheduleWindow]:
-    return db.query(ScheduleWindow).order_by(ScheduleWindow.day_of_week, ScheduleWindow.start_time).all()
+def list_intervals(db: Session, company_id: int | None = None) -> list[ScheduleWindow]:
+    return db.query(ScheduleWindow).filter_by(company_id=company_id).order_by(ScheduleWindow.day_of_week, ScheduleWindow.start_time).all()
 
 
-def update_schedule(db: Session, data: ScheduleConfigUpdate) -> ScheduleConfig:
-    config = ensure_config(db)
+def update_schedule(db: Session, data: ScheduleConfigUpdate, company_id: int | None = None) -> ScheduleConfig:
+    config = ensure_config(db, company_id=company_id)
     changed = False
     if data.intervals is not None:
-        db.execute(delete(ScheduleWindow))
+        # Delete only this company's windows
+        db.query(ScheduleWindow).filter_by(company_id=company_id).delete()
         for interval in data.intervals:
             if interval.start_time >= interval.end_time:
                 raise HTTPException(status_code=400, detail="start_time must be before end_time")
             db.add(
                 ScheduleWindow(
+                    company_id=company_id,
                     day_of_week=interval.day_of_week,
                     start_time=interval.start_time,
                     end_time=interval.end_time,
@@ -118,13 +125,14 @@ def update_schedule(db: Session, data: ScheduleConfigUpdate) -> ScheduleConfig:
     return config
 
 
-def charge_for_connected_call(db: Session) -> int:
+def charge_for_connected_call(db: Session, company_id: int | None = None) -> int:
     """
     Deducts cost per connected call from wallet. Returns remaining balance.
     Automatically disables dialing if balance hits zero.
     """
-    ensure_config(db)
-    cfg = db.query(ScheduleConfig).with_for_update().get(1)
+    cfg = ensure_config(db, company_id=company_id)
+    # Lock the config row for update
+    cfg = db.query(ScheduleConfig).filter_by(company_id=company_id).with_for_update().first()
     if not cfg:
         raise HTTPException(status_code=500, detail="Billing config missing")
     cost = cfg.cost_per_connected or 0
@@ -152,8 +160,8 @@ def charge_for_connected_call(db: Session) -> int:
     return new_balance
 
 
-def get_billing_info(db: Session) -> dict:
-    cfg = ensure_config(db)
+def get_billing_info(db: Session, company_id: int | None = None) -> dict:
+    cfg = ensure_config(db, company_id=company_id)
     return {
         "wallet_balance": cfg.wallet_balance or 0,
         "cost_per_connected": cfg.cost_per_connected or 0,
@@ -162,8 +170,8 @@ def get_billing_info(db: Session) -> dict:
     }
 
 
-def update_billing(db: Session, wallet_balance: int | None = None, cost_per_connected: int | None = None) -> ScheduleConfig:
-    cfg = ensure_config(db)
+def update_billing(db: Session, wallet_balance: int | None = None, cost_per_connected: int | None = None, company_id: int | None = None) -> ScheduleConfig:
+    cfg = ensure_config(db, company_id=company_id)
     changed = False
     if wallet_balance is not None:
         cfg.wallet_balance = wallet_balance
@@ -186,8 +194,8 @@ def is_holiday(date_value: datetime) -> bool:
     return False
 
 
-def is_call_allowed(now: datetime | None, db: Session) -> tuple[bool, str | None, int]:
-    config = ensure_config(db)
+def is_call_allowed(now: datetime | None, db: Session, company_id: int | None = None) -> tuple[bool, str | None, int]:
+    config = ensure_config(db, company_id=company_id)
     now = (now or datetime.now(TEHRAN_TZ)).astimezone(TEHRAN_TZ)
     if config.wallet_balance is not None and config.wallet_balance <= 0:
         if config.enabled:
@@ -202,7 +210,7 @@ def is_call_allowed(now: datetime | None, db: Session) -> tuple[bool, str | None
     if config.skip_holidays and is_holiday(now):
         return False, "holiday", settings.short_retry_seconds
 
-    intervals = list_intervals(db)
+    intervals = list_intervals(db, company_id=company_id)
     todays_intervals = [i for i in intervals if i.day_of_week == _iran_weekday(now)]
     if not todays_intervals:
         return False, "no_window", settings.long_retry_seconds

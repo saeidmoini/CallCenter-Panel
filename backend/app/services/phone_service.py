@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.dialects.postgresql import insert
 
 from ..models.phone_number import PhoneNumber, CallStatus
-from ..models.call_attempt import CallAttempt
+from ..models.call_result import CallResult
 from ..models.user import AdminUser, UserRole
 from ..schemas.phone_number import (
     PhoneNumberCreate,
@@ -228,7 +228,7 @@ def delete_number(db: Session, number_id: int, current_user: AdminUser) -> None:
         raise HTTPException(status_code=404, detail="Number not found")
     _ensure_can_access(number, current_user)
     _ensure_mutable_status(number, current_user)
-    db.query(CallAttempt).filter(CallAttempt.phone_number_id == number_id).delete(synchronize_session=False)
+    db.query(CallResult).filter(CallResult.phone_number_id == number_id).delete(synchronize_session=False)
     db.delete(number)
     db.commit()
 
@@ -340,7 +340,7 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
     if payload.action == "delete":
         _require_mutable_selection()
         id_subquery = mutable_query.with_entities(PhoneNumber.id)
-        db.query(CallAttempt).filter(CallAttempt.phone_number_id.in_(id_subquery)).delete(synchronize_session=False)
+        db.query(CallResult).filter(CallResult.phone_number_id.in_(id_subquery)).delete(synchronize_session=False)
         result.deleted = mutable_query.delete(synchronize_session=False)
         db.commit()
         return result

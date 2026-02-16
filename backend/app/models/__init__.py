@@ -1,16 +1,24 @@
-from .user import AdminUser, UserRole
-from .phone_number import PhoneNumber, CallStatus
+from .user import AdminUser, UserRole, AgentType
+from .phone_number import PhoneNumber, CallStatus, GlobalStatus
 from .schedule import ScheduleConfig, ScheduleWindow
-from .call_attempt import CallAttempt
+from .call_result import CallResult
 from .dialer_batch import DialerBatch
+from .company import Company
+from .scenario import Scenario
+from .outbound_line import OutboundLine
 
 __all__ = [
     "AdminUser",
     "UserRole",
+    "AgentType",
     "PhoneNumber",
     "CallStatus",
+    "GlobalStatus",
     "ScheduleConfig",
     "ScheduleWindow",
-    "CallAttempt",
+    "CallResult",
     "DialerBatch",
+    "Company",
+    "Scenario",
+    "OutboundLine",
 ]
