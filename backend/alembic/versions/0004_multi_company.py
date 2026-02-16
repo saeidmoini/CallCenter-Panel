@@ -22,9 +22,19 @@ def upgrade() -> None:
     # Add INBOUND_CALL to existing callstatus enum
     op.execute("ALTER TYPE callstatus ADD VALUE IF NOT EXISTS 'INBOUND_CALL'")
 
-    # Create new enums
-    op.execute("CREATE TYPE globalstatus AS ENUM ('ACTIVE', 'COMPLAINED', 'POWER_OFF')")
-    op.execute("CREATE TYPE agenttype AS ENUM ('INBOUND', 'OUTBOUND', 'BOTH')")
+    # Create new enums (skip if already exist)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE globalstatus AS ENUM ('ACTIVE', 'COMPLAINED', 'POWER_OFF');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE agenttype AS ENUM ('INBOUND', 'OUTBOUND', 'BOTH');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     # ===== 2. Create companies table =====
     op.create_table(
