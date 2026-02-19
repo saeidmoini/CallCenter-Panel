@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     skip_holidays_default: bool = Field(True, alias="SKIP_HOLIDAYS")
     assignment_timeout_minutes: int = Field(60, alias="ASSIGNMENT_TIMEOUT_MINUTES")
     call_cooldown_days: int = Field(3, alias="CALL_COOLDOWN_DAYS")
+    bank_sms_sender: str = Field("30008528", alias="BANK_SMS_SENDER")
+    manager_alert_numbers: str = Field("", alias="MANAGER_ALERT_NUMBERS")
+    melipayamak_advanced_url: str = Field(
+        "https://console.melipayamak.com/api/send/advanced",
+        alias="MELIPAYAMAK_ADVANCED_URL",
+    )
+    melipayamak_from: str = Field("9982003047", alias="MELIPAYAMAK_FROM")
+    melipayamak_api_key: str = Field("", alias="MELIPAYAMAK_API_KEY")
     short_retry_seconds: int = 300
     long_retry_seconds: int = 900
     cors_origins: list[str] = Field(

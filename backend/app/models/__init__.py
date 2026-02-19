@@ -6,6 +6,7 @@ from .dialer_batch import DialerBatch
 from .company import Company
 from .scenario import Scenario
 from .outbound_line import OutboundLine
+from .wallet import WalletTransaction, BankIncomingSms
 
 __all__ = [
     "AdminUser",
@@ -21,4 +22,6 @@ __all__ = [
     "Company",
     "Scenario",
     "OutboundLine",
+    "WalletTransaction",
+    "BankIncomingSms",
 ]

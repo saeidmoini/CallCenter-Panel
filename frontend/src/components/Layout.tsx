@@ -47,7 +47,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { path: `/${company.name}/dashboard`, label: 'داشبورد', roles: ['ADMIN'] },
     { path: `/${company.name}/numbers`, label: 'مدیریت شماره‌ها', roles: ['ADMIN', 'AGENT'] },
     { path: `/${company.name}/schedule`, label: 'زمان‌بندی تماس', roles: ['ADMIN'] },
-    { path: `/${company.name}/billing`, label: 'تنظیمات مالی', roles: ['ADMIN'], superuserOnly: true },
+    { path: `/${company.name}/billing`, label: 'تنظیمات مالی', roles: ['ADMIN'] },
     { path: `/${company.name}/admins`, label: 'مدیریت کاربران', roles: ['ADMIN'] },
     { path: `/${company.name}/scenarios`, label: 'سناریوها', roles: ['ADMIN'] },
     { path: `/${company.name}/outbound-lines`, label: 'خطوط خروجی', roles: ['ADMIN'], superuserOnly: true },

@@ -18,6 +18,7 @@ const CompanySelectorPage = () => {
   const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
@@ -57,6 +58,7 @@ const CompanySelectorPage = () => {
     setName('')
     setDisplayName('')
     setIsActive(true)
+    setShowCreateForm(false)
     fetchCompanies()
   }
 
@@ -152,55 +154,6 @@ const CompanySelectorPage = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-        <h2 className="font-semibold mb-3">ایجاد شرکت جدید</h2>
-        <form className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 items-end" onSubmit={handleCreate}>
-          <div>
-            <label className="text-sm text-slate-600">نام فنی (slug)</label>
-            <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <label className="text-sm text-slate-600">نام نمایشی</label>
-            <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            فعال باشد
-          </div>
-          <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm w-full md:w-auto">
-            ایجاد شرکت
-          </button>
-        </form>
-      </div>
-
-      {editingId && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <h2 className="font-semibold mb-3">ویرایش شرکت</h2>
-          <form className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 items-end" onSubmit={handleUpdate}>
-            <div>
-              <label className="text-sm text-slate-600">نام فنی (slug)</label>
-              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={editName} onChange={(e) => setEditName(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm text-slate-600">نام نمایشی</label>
-              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />
-              فعال باشد
-            </div>
-            <div className="flex gap-2 lg:col-span-4">
-              <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm">
-                ذخیره تغییرات
-              </button>
-              <button type="button" className="rounded border border-slate-300 px-4 py-2 text-sm" onClick={cancelEdit}>
-                انصراف
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
       {deleteTarget && (
         <div className="bg-red-50 rounded-xl border border-red-200 p-4 shadow-sm space-y-3">
           <h2 className="font-semibold text-red-700">حذف کامل شرکت</h2>
@@ -276,6 +229,75 @@ const CompanySelectorPage = () => {
         </div>
         {companies.length === 0 && <div className="text-sm text-slate-500">هیچ شرکتی ثبت نشده است.</div>}
       </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">ایجاد شرکت جدید</h2>
+          <button
+            type="button"
+            className="rounded bg-brand-500 text-white px-4 py-2 text-sm"
+            onClick={() => setShowCreateForm((prev) => !prev)}
+          >
+            {showCreateForm ? 'بستن فرم' : 'ایجاد شرکت جدید'}
+          </button>
+        </div>
+        {showCreateForm && (
+          <form className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 items-end" onSubmit={handleCreate}>
+            <div>
+              <label className="text-sm text-slate-600">نام فنی (slug)</label>
+              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm text-slate-600">نام نمایشی</label>
+              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+              فعال باشد
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm w-full md:w-auto">
+                ایجاد شرکت
+              </button>
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-4 py-2 text-sm w-full md:w-auto"
+                onClick={() => setShowCreateForm(false)}
+              >
+                انصراف
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {editingId && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <h2 className="font-semibold mb-3">ویرایش شرکت</h2>
+          <form className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 items-end" onSubmit={handleUpdate}>
+            <div>
+              <label className="text-sm text-slate-600">نام فنی (slug)</label>
+              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm text-slate-600">نام نمایشی</label>
+              <input className="w-full rounded border border-slate-200 px-3 py-2 text-sm" value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />
+              فعال باشد
+            </div>
+            <div className="flex gap-2 lg:col-span-4">
+              <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm">
+                ذخیره تغییرات
+              </button>
+              <button type="button" className="rounded border border-slate-300 px-4 py-2 text-sm" onClick={cancelEdit}>
+                انصراف
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

@@ -49,6 +49,13 @@ Admin panel for managing outbound dialing campaigns: phone number queueing, call
 - Date range and agent-aware search in numbers list (filter by created_at, search by phone/agent name/username/phone)
 - Super-admin company switcher uses a dropdown on mobile (instead of horizontal chips) to prevent page overflow
 - Outbound lines are registered by the call center; panel page is for viewing/manage state (activate/deactivate/delete), not manual line creation
+- Wallet recharge now supports:
+  - Customer self top-up request via exact bank SMS match (amount + Jalali date + hour + minute)
+  - Superadmin manual add/subtract adjustments (logged as transactions)
+  - Full wallet transaction history table with Jalali date filters and `balance_after` per row
+  - Raw inbound bank SMS inbox storage (for matching/audit, not shown in UI)
+  - One-time consume behavior: each matched bank SMS can be used only once
+  - Forwarding every SMS from the bank sender to manager phone numbers via MeliPayamak
 
 ## Dialer API (scheduling enforced)
 - `GET /api/dialer/next-batch?size=100`
@@ -116,6 +123,18 @@ Admin panel for managing outbound dialing campaigns: phone number queueing, call
 
 ## CORS
 - Backend CORS allowlist is controlled via `CORS_ORIGINS` in `.env` (JSON array). Default allows localhost ports 5173/80 for the Vite dev server. Add your deployed frontend domain when hosting.
+
+## Bank SMS Webhook & Wallet Top-up
+- Inbound SMS webhook endpoint:
+  - `GET /getsms.Php?to=$TO$&body=$TEXT$&from=$FROM$`
+- Expected bank sender number is configured in `.env` and only `+` (credit) messages are eligible for wallet top-up matching.
+- Message amount arrives in Rial and is converted to Toman (`/10`) before charging wallet.
+- New `.env` settings:
+  - `BANK_SMS_SENDER` (example: `30008528`)
+  - `MANAGER_ALERT_NUMBERS` (comma-separated)
+  - `MELIPAYAMAK_ADVANCED_URL`
+  - `MELIPAYAMAK_FROM`
+  - `MELIPAYAMAK_API_KEY`
 
 ## Migrations (Alembic)
 - Alembic scaffold with revisions under `backend/alembic/` (initial `0001_initial`, plus `0002_roles_agents_and_statuses` for roles/agent fields, new statuses, and call message storage). Tables also auto-create on startup via `Base.metadata.create_all` for local/dev, but for deployments run migrations:

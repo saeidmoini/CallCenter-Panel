@@ -191,7 +191,7 @@ const AdminUsersPage = () => {
           </div>
           <button
             type="submit"
-            className="rounded bg-brand-500 text-white px-4 py-2 text-sm md:col-span-3 lg:col-span-4 w-full md:w-auto"
+            className="rounded bg-brand-500 text-white px-4 py-2 text-sm w-full md:w-auto md:justify-self-start"
           >
             ایجاد کاربر
           </button>

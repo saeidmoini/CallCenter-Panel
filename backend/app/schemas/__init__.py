@@ -11,6 +11,14 @@ from .outbound_line import (
     OutboundLineOut,
     RegisterOutboundLinesRequest,
 )
+from .billing import (
+    BillingInfo,
+    BillingUpdate,
+    WalletManualAdjustRequest,
+    WalletTopupMatchRequest,
+    WalletTransactionOut,
+    WalletTransactionListOut,
+)
 
 __all__ = [
     "Token",
@@ -41,4 +49,10 @@ __all__ = [
     "OutboundLineUpdate",
     "OutboundLineOut",
     "RegisterOutboundLinesRequest",
+    "BillingInfo",
+    "BillingUpdate",
+    "WalletManualAdjustRequest",
+    "WalletTopupMatchRequest",
+    "WalletTransactionOut",
+    "WalletTransactionListOut",
 ]

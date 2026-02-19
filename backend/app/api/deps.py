@@ -50,5 +50,13 @@ def get_company_user(
     return current_user
 
 
+def get_company_admin(current_user: AdminUser = Depends(get_company_user)) -> AdminUser:
+    if current_user.is_superuser:
+        return current_user
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins only")
+    return current_user
+
+
 def db_session() -> Session:
     return Depends(get_db)

@@ -39,13 +39,24 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 - Super-admin company switcher in `components/Layout.tsx`: desktop uses chip buttons; mobile uses a dropdown to avoid horizontal overflow.
 - Admin users table in `pages/AdminUsers.tsx` intentionally uses horizontal scroll on small screens to preserve column layout.
 - Outbound lines page in `pages/OutboundLines.tsx` no longer exposes manual line creation in UI; lines are expected to be registered by the call center and can then be managed (activate/deactivate/delete).
+- Billing page in `pages/Billing.tsx` is now admin-facing (company admins + superusers). It includes:
+  - customer top-up request form (amount + Jalali date picker + hour/minute) with exact bank-SMS match
+  - wallet transaction history (Jalali dates, date filters, balance-after per transaction)
+  - superuser-only manual `+/-` wallet adjustment section
 
 ## Auth
 - Admins: JWT bearer. `get_current_active_user` from `core/security.py` guards routes; `get_active_admin` enforces `role=ADMIN` for admin-only areas. Passwords hashed with bcrypt. Roles: `ADMIN` (full access) vs `AGENT` (only Numbers endpoints/UI, filtered to their assigned numbers, add/import hidden).
 - Dialer API: shared token from `.env` validated by `api/deps.get_dialer_auth`.
+- SMS webhook is intentionally public (provider constraint): `GET /getsms.Php` ingests inbound SMS, stores raw inbox rows, and forwards all bank-sender messages to manager numbers via MeliPayamak.
 
 ## Config & environment
 - Backend `.env` (see `backend/.env.example`): DB URL, `SECRET_KEY`, `DIALER_TOKEN`, batch sizes, timezone, `CORS_ORIGINS` (JSON array for allowed frontend origins).
+- Wallet/SMS env keys:
+  - `BANK_SMS_SENDER`
+  - `MANAGER_ALERT_NUMBERS` (comma-separated)
+  - `MELIPAYAMAK_ADVANCED_URL`
+  - `MELIPAYAMAK_FROM`
+  - `MELIPAYAMAK_API_KEY`
 - JWT expiry defaults to 1 day (`ACCESS_TOKEN_EXPIRE_MINUTES`).
 - Frontend `.env` (see `frontend/.env.example`): `VITE_API_BASE`.
 - `.gitignore` already ignores envs, node_modules, venv, builds. Keep it updated when new tools are added. Ansible secrets: `deploy/ansible/group_vars/prod.yml` is ignored; use the provided `prod.sample.yml` as a template and/or Ansible Vault for secrets.
@@ -67,3 +78,4 @@ This repo hosts a separate admin panel for a VoIP dialer. Backend is FastAPI + S
 - Update this agent.md when architecture or workflows change.
 - Never commit secrets or real `.env` content.
 - Keep schedule logic centralized in the panel (services + `/api/dialer/next-batch` contract) and reflect any changes in docs.
+- Preserve wallet transaction integrity: matched bank SMS rows must be single-use (`consumed=true`) and manual adjustments must write ledger rows with `balance_after`.

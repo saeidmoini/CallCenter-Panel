@@ -9,6 +9,7 @@ from . import (
     companies,
     scenarios,
     outbound_lines,
+    sms_webhook,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "companies",
     "scenarios",
     "outbound_lines",
+    "sms_webhook",
 ]

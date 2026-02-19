@@ -14,6 +14,7 @@ from .api import (
     companies,
     scenarios,
     outbound_lines,
+    sms_webhook,
 )
 
 settings = get_settings()
@@ -47,6 +48,7 @@ app.include_router(outbound_lines.router, prefix="/api", tags=["outbound-lines"]
 app.include_router(numbers.router, prefix="/api/numbers", tags=["numbers"])
 app.include_router(dialer.router, prefix="/api/dialer", tags=["dialer"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
+app.include_router(sms_webhook.router, tags=["sms-webhook"])
 
 
 @app.get("/health")
