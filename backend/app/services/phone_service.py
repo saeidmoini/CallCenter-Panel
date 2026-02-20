@@ -139,23 +139,34 @@ def add_numbers(db: Session, payload: PhoneNumberCreate, current_user: AdminUser
     }
 
 
-def _apply_status_filter(query, status: CallStatus | None, target_company_id: int | None, db: Session):
-    """Apply per-company status filter via call_results subquery.
-    Uses max(id) — not max(attempted_at) — to correctly identify the latest record
-    even when multiple rows share the same timestamp.
-    """
-    if not status or not target_company_id:
+def _apply_latest_call_filters(
+    query,
+    *,
+    status: CallStatus | None,
+    target_company_id: int | None,
+    agent_id: int | None,
+    db: Session,
+):
+    """Apply latest-call-based filters (status and agent) in one set-based join."""
+    if not target_company_id:
         return query
+
     if status == CallStatus.IN_QUEUE:
         # IN_QUEUE = no call record for this company yet
-        return query.filter(
+        query = query.filter(
             ~db.query(CallResult.id).filter(
                 CallResult.phone_number_id == PhoneNumber.id,
                 CallResult.company_id == target_company_id,
             ).correlate(PhoneNumber).exists()
         )
+        # A latest assigned agent cannot exist when there are no call rows.
+        if agent_id is not None:
+            query = query.filter(False)
+        return query
 
-    # For non-IN_QUEUE statuses use a set-based latest-id join (avoids correlated max(id) per number).
+    if status is None and agent_id is None:
+        return query
+
     latest_per_number_subq = (
         db.query(
             CallResult.phone_number_id.label("phone_number_id"),
@@ -165,11 +176,14 @@ def _apply_status_filter(query, status: CallStatus | None, target_company_id: in
         .group_by(CallResult.phone_number_id)
         .subquery()
     )
-    return (
-        query.join(latest_per_number_subq, latest_per_number_subq.c.phone_number_id == PhoneNumber.id)
-        .join(CallResult, CallResult.id == latest_per_number_subq.c.latest_id)
-        .filter(CallResult.status == status.value)
+    query = query.join(latest_per_number_subq, latest_per_number_subq.c.phone_number_id == PhoneNumber.id).join(
+        CallResult, CallResult.id == latest_per_number_subq.c.latest_id
     )
+    if status is not None:
+        query = query.filter(CallResult.status == status.value)
+    if agent_id is not None:
+        query = query.filter(CallResult.agent_id == agent_id)
+    return query
 
 
 def _local_date_start_utc(value: date) -> datetime:
@@ -238,7 +252,13 @@ def list_numbers(
 
     numbers = _apply_date_filter(numbers, db, target_company_id, start_date, end_date)
 
-    numbers = _apply_status_filter(numbers, status, target_company_id, db)
+    numbers = _apply_latest_call_filters(
+        numbers,
+        status=status,
+        target_company_id=target_company_id,
+        agent_id=agent_id,
+        db=db,
+    )
 
     # Build sort column — last_attempt_at and status live in call_results
     if sort_by == "last_attempt_at" and target_company_id:
@@ -338,7 +358,13 @@ def count_numbers(
 
     query = _apply_date_filter(query, db, target_company_id, start_date, end_date)
 
-    query = _apply_status_filter(query, status, target_company_id, db)
+    query = _apply_latest_call_filters(
+        query,
+        status=status,
+        target_company_id=target_company_id,
+        agent_id=agent_id,
+        db=db,
+    )
 
     return query.scalar() or 0
 
@@ -450,7 +476,13 @@ def _build_query(
 
     query = _apply_date_filter(query, db, target_company_id, start_date, end_date)
 
-    query = _apply_status_filter(query, filter_status, target_company_id, db)
+    query = _apply_latest_call_filters(
+        query,
+        status=filter_status,
+        target_company_id=target_company_id,
+        agent_id=agent_id,
+        db=db,
+    )
     if filter_global_status is not None:
         query = query.filter(PhoneNumber.global_status == filter_global_status)
     if require_mutable and target_company_id and not current_user.is_superuser:
