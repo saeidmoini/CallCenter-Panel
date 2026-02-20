@@ -5,7 +5,7 @@ from typing import Iterable, Sequence
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, literal
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.dialects.postgresql import insert
 
@@ -154,23 +154,22 @@ def _apply_status_filter(query, status: CallStatus | None, target_company_id: in
                 CallResult.company_id == target_company_id,
             ).correlate(PhoneNumber).exists()
         )
-    else:
-        # Find the latest call_result by id (highest id = most recently inserted)
-        latest_id_subq = (
-            db.query(func.max(CallResult.id))
-            .filter(
-                CallResult.phone_number_id == PhoneNumber.id,
-                CallResult.company_id == target_company_id,
-            )
-            .correlate(PhoneNumber)
-            .scalar_subquery()
+
+    # For non-IN_QUEUE statuses use a set-based latest-id join (avoids correlated max(id) per number).
+    latest_per_number_subq = (
+        db.query(
+            CallResult.phone_number_id.label("phone_number_id"),
+            func.max(CallResult.id).label("latest_id"),
         )
-        return query.filter(
-            db.query(CallResult.id).filter(
-                CallResult.id == latest_id_subq,
-                CallResult.status == status,
-            ).correlate(PhoneNumber).exists()
-        )
+        .filter(CallResult.company_id == target_company_id)
+        .group_by(CallResult.phone_number_id)
+        .subquery()
+    )
+    return (
+        query.join(latest_per_number_subq, latest_per_number_subq.c.phone_number_id == PhoneNumber.id)
+        .join(CallResult, CallResult.id == latest_per_number_subq.c.latest_id)
+        .filter(CallResult.status == status.value)
+    )
 
 
 def _local_date_start_utc(value: date) -> datetime:
@@ -454,6 +453,28 @@ def _build_query(
     query = _apply_status_filter(query, filter_status, target_company_id, db)
     if filter_global_status is not None:
         query = query.filter(PhoneNumber.global_status == filter_global_status)
+    if require_mutable and target_company_id and not current_user.is_superuser:
+        # For non-superusers, bulk actions can only touch mutable statuses.
+        latest_id_subq = (
+            db.query(func.max(CallResult.id))
+            .filter(
+                CallResult.phone_number_id == PhoneNumber.id,
+                CallResult.company_id == target_company_id,
+            )
+            .correlate(PhoneNumber)
+            .scalar_subquery()
+        )
+        has_any_call = db.query(CallResult.id).filter(
+            CallResult.phone_number_id == PhoneNumber.id,
+            CallResult.company_id == target_company_id,
+        ).correlate(PhoneNumber).exists()
+        mutable_real_statuses = [s.value for s in MUTABLE_STATUSES if s != CallStatus.IN_QUEUE]
+        has_mutable_latest = db.query(CallResult.id).filter(
+            CallResult.id == latest_id_subq,
+            CallResult.status.in_(mutable_real_statuses),
+        ).correlate(PhoneNumber).exists()
+        # IN_QUEUE means no call record for this company yet.
+        query = query.filter(or_(~has_any_call, has_mutable_latest))
 
     if select_all:
         if excluded_ids:
@@ -481,6 +502,7 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
         excluded_ids=payload.excluded_ids,
         target_company_id=target_company_id,
         agent_id=payload.agent_id,
+        require_mutable=payload.action in {"update_status", "reset", "delete"},
         start_date=_parse_iso_date(payload.start_date),
         end_date=_parse_iso_date(payload.end_date),
     )
@@ -500,10 +522,10 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
 
     if payload.action == "reset":
         # Delete call_results for this company → dialer will re-call these numbers
-        number_ids = [r.id for r in base_query.with_entities(PhoneNumber.id).all()]
-        if target_company_id and number_ids:
+        id_subquery = base_query.with_entities(PhoneNumber.id).subquery()
+        if target_company_id:
             db.query(CallResult).filter(
-                CallResult.phone_number_id.in_(number_ids),
+                CallResult.phone_number_id.in_(select(id_subquery.c.id)),
                 CallResult.company_id == target_company_id,
             ).delete(synchronize_session=False)
         result.reset = (
@@ -517,10 +539,7 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
 
     if payload.action == "update_status" and payload.status:
         if target_company_id:
-            number_ids = [r.id for r in base_query.with_entities(PhoneNumber.id).all()]
-            if not current_user.is_superuser:
-                for num_id in number_ids:
-                    _ensure_mutable_for_user(db, num_id, target_company_id, current_user)
+            target_ids_subq = base_query.with_entities(PhoneNumber.id.label("id")).subquery()
             shared_status = (
                 GlobalStatus.POWER_OFF
                 if payload.status == CallStatus.POWER_OFF
@@ -528,41 +547,49 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
                 if payload.status == CallStatus.COMPLAINED
                 else GlobalStatus.ACTIVE
             )
-            db.query(PhoneNumber).filter(PhoneNumber.id.in_(number_ids)).update(
+            db.query(PhoneNumber).filter(PhoneNumber.id.in_(select(target_ids_subq.c.id))).update(
                 {PhoneNumber.global_status: shared_status},
                 synchronize_session=False,
             )
-            # Fetch latest call_result per number in a single query (highest id wins)
-            latest_id_rows = (
-                db.query(func.max(CallResult.id))
-                .filter(
-                    CallResult.phone_number_id.in_(number_ids),
-                    CallResult.company_id == target_company_id,
-                )
+
+            latest_call_ids_subq = (
+                db.query(func.max(CallResult.id).label("id"))
+                .join(target_ids_subq, CallResult.phone_number_id == target_ids_subq.c.id)
+                .filter(CallResult.company_id == target_company_id)
                 .group_by(CallResult.phone_number_id)
-                .all()
+                .subquery()
             )
-            latest_ids = [row[0] for row in latest_id_rows if row[0] is not None]
-            latest_calls = (
-                db.query(CallResult).filter(CallResult.id.in_(latest_ids)).all()
-                if latest_ids else []
+
+            updated_existing = db.query(CallResult).filter(
+                CallResult.id.in_(select(latest_call_ids_subq.c.id))
+            ).update(
+                {CallResult.status: payload.status},
+                synchronize_session=False,
             )
-            existing = {cr.phone_number_id: cr for cr in latest_calls}
-            now_utc = datetime.now(timezone.utc)
-            updated = 0
-            for num_id in number_ids:
-                if num_id in existing:
-                    existing[num_id].status = payload.status
-                else:
-                    db.add(CallResult(
-                        phone_number_id=num_id,
-                        company_id=target_company_id,
-                        status=payload.status,
-                        attempted_at=now_utc,
-                    ))
-                updated += 1
+
+            missing_ids_subq = (
+                select(target_ids_subq.c.id)
+                .where(
+                    ~select(CallResult.id).where(
+                        CallResult.phone_number_id == target_ids_subq.c.id,
+                        CallResult.company_id == target_company_id,
+                    ).exists()
+                )
+                .subquery()
+            )
+            insert_result = db.execute(
+                insert(CallResult).from_select(
+                    ["phone_number_id", "company_id", "status", "attempted_at"],
+                    select(
+                        missing_ids_subq.c.id,
+                        literal(target_company_id),
+                        literal(payload.status.value),
+                        literal(datetime.now(timezone.utc)),
+                    ),
+                )
+            )
             db.commit()
-            result.updated = updated
+            result.updated = (updated_existing or 0) + (insert_result.rowcount or 0)
         return result
 
     raise HTTPException(status_code=400, detail="Unsupported action")

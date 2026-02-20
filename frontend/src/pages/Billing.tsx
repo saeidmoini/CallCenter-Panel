@@ -215,22 +215,22 @@ const BillingPage = () => {
                 onChange={(e) => setMatchAmount(e.target.value === '' ? '' : Number(e.target.value))}
               />
             </div>
-            <div>
-              <label className="text-sm text-slate-600 block mb-1">تاریخ تراکنش (شمسی)</label>
-              <DatePicker
-                value={matchDate}
-                onChange={setMatchDate}
-                calendar={persian}
-                locale={persian_fa}
-                format="YYYY/MM/DD"
-                editable={false}
-                calendarPosition="bottom-right"
-                inputClass="w-full rounded border border-slate-200 px-3 py-2 text-sm text-right"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2" dir="ltr">
               <div>
-                <label className="text-sm text-slate-600">ساعت</label>
+                <label className="text-sm text-slate-600 block mb-1 text-right">تاریخ تراکنش (شمسی)</label>
+                <DatePicker
+                  value={matchDate}
+                  onChange={setMatchDate}
+                  calendar={persian}
+                  locale={persian_fa}
+                  format="YYYY/MM/DD"
+                  editable={false}
+                  calendarPosition="bottom-right"
+                  inputClass="w-full rounded border border-slate-200 px-3 py-2 text-sm text-right"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-600 text-right block">ساعت</label>
                 <input
                   type="number"
                   min={0}
@@ -241,7 +241,7 @@ const BillingPage = () => {
                 />
               </div>
               <div>
-                <label className="text-sm text-slate-600">دقیقه</label>
+                <label className="text-sm text-slate-600 text-right block">دقیقه</label>
                 <input
                   type="number"
                   min={0}
@@ -266,33 +266,35 @@ const BillingPage = () => {
           <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
             <h2 className="font-semibold mb-3">تغییر دستی موجودی (سوپر ادمین)</h2>
             <form className="grid gap-3" onSubmit={handleManualAdjust}>
-              <div>
-                <label className="text-sm text-slate-600">مبلغ (تومان)</label>
-                <input
-                  type="number"
-                  min={1}
-                  className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
-                  value={manualAmount}
-                  onChange={(e) => setManualAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-600 block mb-1">نوع عملیات</label>
-                <div className="inline-flex rounded border border-slate-200 overflow-hidden">
-                  <button
-                    type="button"
-                    className={`px-3 py-2 text-sm ${manualOperation === 'ADD' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700'}`}
-                    onClick={() => setManualOperation('ADD')}
-                  >
-                    +
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-3 py-2 text-sm ${manualOperation === 'SUBTRACT' ? 'bg-red-600 text-white' : 'bg-white text-slate-700'}`}
-                    onClick={() => setManualOperation('SUBTRACT')}
-                  >
-                    -
-                  </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-slate-600">مبلغ (تومان)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-600 block mb-1">نوع عملیات</label>
+                  <div className="inline-flex rounded border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      className={`px-3 py-2 text-sm ${manualOperation === 'ADD' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700'}`}
+                      onClick={() => setManualOperation('ADD')}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-3 py-2 text-sm ${manualOperation === 'SUBTRACT' ? 'bg-red-600 text-white' : 'bg-white text-slate-700'}`}
+                      onClick={() => setManualOperation('SUBTRACT')}
+                    >
+                      -
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>

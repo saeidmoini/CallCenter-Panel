@@ -98,13 +98,23 @@ const NumbersPage = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
-  const [selectingAll, setSelectingAll] = useState(false)
+  const [selectAllSnapshot, setSelectAllSnapshot] = useState<{
+    statusFilter: string
+    globalStatusFilter: string
+    search: string
+    startDateIso?: string
+    endDateIso?: string
+    totalCount: number
+  } | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const [bulkAction, setBulkAction] = useState<'update_status' | 'reset' | 'delete'>('update_status')
   const [bulkStatus, setBulkStatus] = useState<string>('IN_QUEUE')
   const [sortBy, setSortBy] = useState<'created_at' | 'last_attempt_at' | 'status'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [exporting, setExporting] = useState(false)
+  const [selectingAll, setSelectingAll] = useState(false)
 
   // null/undefined status means number has never been called → treat as IN_QUEUE (modifiable)
   const canModifyStatus = (status: string | null | undefined) =>
@@ -189,6 +199,7 @@ const NumbersPage = () => {
     setSelectedIds(new Set())
     setExcludedIds(new Set())
     setSelectAll(false)
+    setSelectAllSnapshot(null)
   }
 
   const handleAdd = async (e: FormEvent) => {
@@ -196,10 +207,15 @@ const NumbersPage = () => {
     if (!isAdmin) return
     const phone_numbers = newNumbers.split(/\n|,/).map((s) => s.trim()).filter(Boolean)
     if (!phone_numbers.length) return
-    await client.post('/api/numbers', { phone_numbers })
-    setNewNumbers('')
-    fetchNumbers()
-    fetchStats()
+    setAdding(true)
+    try {
+      await client.post('/api/numbers', { phone_numbers })
+      setNewNumbers('')
+      await fetchNumbers()
+      await fetchStats()
+    } finally {
+      setAdding(false)
+    }
   }
 
   const updateStatus = async (id: number, status: string) => {
@@ -330,8 +346,16 @@ const NumbersPage = () => {
 
   const handleBulk = async () => {
     if (!isAdmin) return
+    if (bulkLoading) return
     const ids = selectAll ? [] : Array.from(selectedIds)
     const excluded_ids = selectAll ? Array.from(excludedIds) : []
+    const selectionFilters = selectAllSnapshot ?? {
+      statusFilter,
+      globalStatusFilter,
+      search,
+      startDateIso,
+      endDateIso,
+    }
     if (!selectAll && ids.length === 0) {
       alert('هیچ ردیفی انتخاب نشده است')
       return
@@ -360,11 +384,11 @@ const NumbersPage = () => {
       ids,
       select_all: selectAll,
       excluded_ids,
-      filter_status: statusFilter || undefined,
-      filter_global_status: globalStatusFilter || undefined,
-      search: search || undefined,
-      start_date: startDateIso,
-      end_date: endDateIso,
+      filter_status: selectionFilters.statusFilter || undefined,
+      filter_global_status: selectionFilters.globalStatusFilter || undefined,
+      search: selectionFilters.search || undefined,
+      start_date: selectionFilters.startDateIso,
+      end_date: selectionFilters.endDateIso,
       sort_by: sortBy,
       sort_order: sortOrder,
       company_name: company?.name || undefined,
@@ -372,39 +396,46 @@ const NumbersPage = () => {
     if (bulkAction === 'update_status') {
       payload.status = bulkStatus
     }
-    await client.post('/api/numbers/bulk', payload)
-    clearSelection()
-    fetchNumbers()
-    fetchStats()
+    setBulkLoading(true)
+    try {
+      await client.post('/api/numbers/bulk', payload)
+      clearSelection()
+      await fetchNumbers()
+      await fetchStats()
+    } finally {
+      setBulkLoading(false)
+    }
   }
-
   const handleSelectAllFiltered = async () => {
-    if (!isAdmin || totalCount === 0) return
+    if (!isAdmin) return
     setSelectingAll(true)
     try {
-      let rows = numbers
-      if (totalCount > numbers.length) {
-        const { data } = await client.get<PhoneNumber[]>('/api/numbers', {
-          params: {
-            company: company?.name || undefined,
-            status: statusFilter || undefined,
-            global_status: globalStatusFilter || undefined,
-            search: search || undefined,
-            start_date: startDateIso,
-            end_date: endDateIso,
-            skip: 0,
-            limit: totalCount,
-            sort_by: sortBy,
-            sort_order: sortOrder,
-          },
-        })
-        rows = data
+      const { data } = await client.get<{ total: number }>('/api/numbers/stats', {
+        params: {
+          company: company?.name || undefined,
+          status: statusFilter || undefined,
+          global_status: globalStatusFilter || undefined,
+          search: search || undefined,
+          start_date: startDateIso,
+          end_date: endDateIso,
+        },
+      })
+      const filteredTotal = data.total || 0
+      if (filteredTotal <= 0) {
+        clearSelection()
+        return
       }
-
-      const selectableIds = new Set(rows.filter(isRowSelectable).map((n) => n.id))
-      setSelectAll(false)
+      setSelectAll(true)
       setExcludedIds(new Set())
-      setSelectedIds(selectableIds)
+      setSelectedIds(new Set())
+      setSelectAllSnapshot({
+        statusFilter,
+        globalStatusFilter,
+        search,
+        startDateIso,
+        endDateIso,
+        totalCount: filteredTotal,
+      })
     } finally {
       setSelectingAll(false)
     }
@@ -414,6 +445,13 @@ const NumbersPage = () => {
     if (!isAdmin) return
     const ids = selectAll ? [] : Array.from(selectedIds)
     const excluded_ids = selectAll ? Array.from(excludedIds) : []
+    const selectionFilters = selectAllSnapshot ?? {
+      statusFilter,
+      globalStatusFilter,
+      search,
+      startDateIso,
+      endDateIso,
+    }
     if (!selectAll && ids.length === 0) {
       alert('برای خروجی گرفتن، ردیفی انتخاب کنید یا انتخاب همه را بزنید')
       return
@@ -424,11 +462,11 @@ const NumbersPage = () => {
         ids,
         select_all: selectAll,
         excluded_ids,
-        filter_status: statusFilter || undefined,
-        filter_global_status: globalStatusFilter || undefined,
-        search: search || undefined,
-        start_date: startDateIso,
-        end_date: endDateIso,
+        filter_status: selectionFilters.statusFilter || undefined,
+        filter_global_status: selectionFilters.globalStatusFilter || undefined,
+        search: selectionFilters.search || undefined,
+        start_date: selectionFilters.startDateIso,
+        end_date: selectionFilters.endDateIso,
         sort_by: sortBy,
         sort_order: sortOrder,
         company_name: company?.name || undefined,
@@ -449,8 +487,12 @@ const NumbersPage = () => {
     }
   }
 
-  const selectedCount = selectAll ? totalCount - excludedIds.size : selectedIds.size
-  const canBulk = selectAll ? totalCount > excludedIds.size : selectedIds.size > 0
+  const selectedCount = selectAll
+    ? Math.max((selectAllSnapshot?.totalCount ?? totalCount) - excludedIds.size, 0)
+    : selectedIds.size
+  const canBulk = selectAll
+    ? (selectAllSnapshot?.totalCount ?? totalCount) > excludedIds.size
+    : selectedIds.size > 0
   const canExport = canBulk || selectAll
 
   const handleSort = (field: 'last_attempt_at' | 'status') => {
@@ -478,6 +520,7 @@ const NumbersPage = () => {
                 disabled={uploading}
               />
               {uploadMessage && <div className="text-xs text-slate-600">{uploadMessage}</div>}
+              {uploading && <div className="text-xs text-brand-700">در حال پردازش فایل...</div>}
             </div>
             <form className="flex-1 space-y-3 w-full" onSubmit={handleAdd}>
               <textarea
@@ -487,8 +530,12 @@ const NumbersPage = () => {
                 value={newNumbers}
                 onChange={(e) => setNewNumbers(e.target.value)}
               />
-              <button type="submit" className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700">
-                افزودن به صف
+              <button
+                type="submit"
+                className="rounded bg-brand-500 text-white px-4 py-2 text-sm hover:bg-brand-700 disabled:opacity-50"
+                disabled={adding}
+              >
+                {adding ? 'در حال افزودن...' : 'افزودن به صف'}
               </button>
             </form>
           </div>
@@ -568,7 +615,7 @@ const NumbersPage = () => {
               <button
                 className="rounded border border-slate-200 px-2 py-1 text-[11px]"
                 onClick={handleSelectAllFiltered}
-                disabled={totalCount === 0 || selectingAll || loading}
+                disabled={totalCount === 0 || loading || selectingAll}
               >
                 {selectingAll ? 'در حال انتخاب...' : 'انتخاب همه فیلترشده‌ها'}
               </button>
@@ -610,10 +657,10 @@ const NumbersPage = () => {
               )}
               <button
                 className="rounded bg-brand-500 text-white px-3 py-1 text-sm disabled:opacity-50 w-full sm:w-auto"
-                disabled={!canBulk}
+                disabled={!canBulk || bulkLoading}
                 onClick={handleBulk}
               >
-                اعمال
+                {bulkLoading ? 'در حال اعمال...' : 'اعمال'}
               </button>
               <button
                 className="rounded border border-slate-200 px-3 py-1 text-sm disabled:opacity-50 w-full sm:w-auto"
