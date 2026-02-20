@@ -29,6 +29,17 @@ class ParsedBankSms:
     is_credit: bool
 
 
+@dataclass
+class BankSmsProfile:
+    key: str
+    bank_name: str
+    sms_sender: str
+    manager_numbers: list[str]
+    melipayamak_from: str
+    melipayamak_api_key: str
+    parser_key: str
+
+
 PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 
 
@@ -93,42 +104,85 @@ def jalali_date_range_to_utc(from_jalali: str | None, to_jalali: str | None) -> 
     return start_utc, end_utc
 
 
-def _manager_numbers() -> list[str]:
-    raw = settings.manager_alert_numbers or ""
-    return [n.strip() for n in raw.split(",") if n.strip()]
+def _split_numbers(raw: str | None) -> list[str]:
+    return [n.strip() for n in (raw or "").split(",") if n.strip()]
 
 
-def _forward_sms_to_managers(text: str) -> None:
-    numbers = _manager_numbers()
-    if not numbers:
+def _normalize_sender(value: str | None) -> str:
+    return _to_ascii_digits((value or "").strip())
+
+
+def _build_bank_profiles() -> list[BankSmsProfile]:
+    salehi = BankSmsProfile(
+        key="salehi",
+        bank_name=(settings.salehi_bank_name or "Salehi Bank").strip(),
+        sms_sender=_normalize_sender(settings.salehi_bank_sms_sender),
+        manager_numbers=_split_numbers(settings.salehi_manager_alert_numbers),
+        melipayamak_from=(settings.salehi_melipayamak_from or "").strip(),
+        melipayamak_api_key=(settings.salehi_melipayamak_api_key or "").strip(),
+        parser_key=(settings.salehi_sms_parser or "default").strip().lower(),
+    )
+    default_profile = BankSmsProfile(
+        key="default",
+        bank_name=(settings.default_bank_name or "Default Bank").strip(),
+        sms_sender=_normalize_sender(settings.default_bank_sms_sender or settings.bank_sms_sender),
+        manager_numbers=_split_numbers(settings.default_manager_alert_numbers or settings.manager_alert_numbers),
+        melipayamak_from=(settings.default_melipayamak_from or settings.melipayamak_from).strip(),
+        melipayamak_api_key=(settings.default_melipayamak_api_key or settings.melipayamak_api_key).strip(),
+        parser_key=(settings.default_sms_parser or "default").strip().lower(),
+    )
+    profiles = [p for p in [salehi, default_profile] if p.sms_sender]
+    return profiles
+
+
+def _resolve_profile_by_sender(sender: str) -> BankSmsProfile | None:
+    normalized_sender = _normalize_sender(sender)
+    if not normalized_sender:
+        return None
+    for profile in _build_bank_profiles():
+        if profile.sms_sender == normalized_sender:
+            return profile
+    return None
+
+
+def _send_sms_via_profile(profile: BankSmsProfile, text: str) -> None:
+    if not profile.manager_numbers:
         return
-
-    api_key = (settings.melipayamak_api_key or "").strip()
-    if not api_key:
+    if not profile.melipayamak_api_key:
         return
 
     payload = {
-        "from": settings.melipayamak_from,
-        "to": numbers,
+        "from": profile.melipayamak_from,
+        "to": profile.manager_numbers,
         "text": text,
         "udh": "",
     }
     base_url = (settings.melipayamak_advanced_url or "").rstrip("/")
-    endpoint_url = base_url if base_url.endswith(f"/{api_key}") else f"{base_url}/{api_key}"
+    endpoint_url = base_url if base_url.endswith(f"/{profile.melipayamak_api_key}") else f"{base_url}/{profile.melipayamak_api_key}"
     req = request.Request(
         endpoint_url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-        },
+        headers={"Content-Type": "application/json"},
         method="POST",
     )
+    with request.urlopen(req, timeout=10):
+        pass
+
+
+def _forward_sms_to_managers(profile: BankSmsProfile, text: str) -> None:
+    forwarded = f"{profile.bank_name}:\n{text}"
     try:
-        with request.urlopen(req, timeout=10):
-            pass
+        _send_sms_via_profile(profile, forwarded)
     except Exception:
         # Forwarding failure should not block SMS ingestion.
         return
+
+
+def _parse_bank_sms_by_profile(profile: BankSmsProfile, body: str) -> tuple[ParsedBankSms | None, str | None]:
+    # Reserved for per-bank parsing strategies. For now both use the default parser.
+    if profile.parser_key == "default":
+        return parse_bank_sms(body)
+    return parse_bank_sms(body)
 
 
 def notify_google_sheet_topup(*, company_name: str, amount_toman: int, transaction_at: datetime) -> None:
@@ -163,18 +217,64 @@ def notify_google_sheet_topup(*, company_name: str, amount_toman: int, transacti
         logger.warning("Google Sheet webhook failed for company=%s: %s", company_name, exc)
 
 
+def _format_amount_toman(amount_toman: int) -> str:
+    return f"{amount_toman:,}".replace(",", ".")
+
+
+def _to_jalali_datetime_text(dt: datetime) -> str:
+    tx_dt = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    tehran_dt = tx_dt.astimezone(TEHRAN_TZ)
+    jdt = jdatetime.datetime.fromgregorian(datetime=tehran_dt)
+    return f"{jdt.year:04d}/{jdt.month:02d}/{jdt.day:02d}-{jdt.hour:02d}:{jdt.minute:02d}"
+
+
+def notify_managers_wallet_topup_success(
+    db: Session,
+    *,
+    company_name: str,
+    tx: WalletTransaction,
+) -> None:
+    if tx.source != "BANK_MATCH" or not tx.bank_sms_id:
+        return
+
+    sms = db.query(BankIncomingSms).filter(BankIncomingSms.id == tx.bank_sms_id).first()
+    if not sms:
+        return
+    profile = _resolve_profile_by_sender(sms.sender)
+    if not profile:
+        return
+
+    message = (
+        f"{profile.bank_name}:\n"
+        f"اکانت {company_name} شارژ شد\n"
+        f"مبلغ: {_format_amount_toman(tx.amount_toman)} ت\n"
+        f"تاریخ: {_to_jalali_datetime_text(tx.transaction_at)}"
+    )
+    try:
+        _send_sms_via_profile(profile, message)
+    except Exception as exc:
+        # Notification failure should not rollback wallet charge.
+        logger.warning(
+            "Topup success manager notification failed for company=%s bank_sender=%s: %s",
+            company_name,
+            sms.sender,
+            exc,
+        )
+
+
 def should_store_bank_sms(parsed: ParsedBankSms | None) -> bool:
     # Only credit (+) bank SMS messages with valid parsed structure are stored for wallet matching.
     return bool(parsed and parsed.is_credit)
 
 
 def ingest_incoming_sms(db: Session, sender: str, receiver: str | None, body: str) -> BankIncomingSms | None:
-    is_bank_sender = sender == settings.bank_sms_sender
-    parsed, _parse_error = parse_bank_sms(body) if is_bank_sender else (None, None)
+    profile = _resolve_profile_by_sender(sender)
+    is_bank_sender = profile is not None
+    parsed, _parse_error = _parse_bank_sms_by_profile(profile, body) if profile else (None, None)
 
     # Forward every message from bank sender to manager numbers, regardless of parse outcome.
-    if is_bank_sender:
-        _forward_sms_to_managers(body)
+    if profile:
+        _forward_sms_to_managers(profile, body)
 
     # Store only valid deposit-format bank SMS records.
     if not is_bank_sender or not should_store_bank_sms(parsed):

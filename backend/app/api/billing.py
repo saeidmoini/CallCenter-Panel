@@ -102,6 +102,11 @@ def topup_match(
         amount_toman=tx.amount_toman,
         transaction_at=tx.transaction_at,
     )
+    wallet_service.notify_managers_wallet_topup_success(
+        db,
+        company_name=company.name,
+        tx=tx,
+    )
     return WalletTransactionOut(
         id=tx.id,
         amount_toman=tx.amount_toman,
