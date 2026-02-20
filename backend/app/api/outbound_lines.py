@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
-from ..api.deps import get_company, get_superuser
+from ..api.deps import get_company, get_company_admin
 from ..schemas.outbound_line import OutboundLineCreate, OutboundLineUpdate, OutboundLineOut
 from ..models.outbound_line import OutboundLine
 from ..models.company import Company
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/{company_name}/outbound-lines", response_model=list[OutboundLineOut])
 def list_outbound_lines(
     company: Company = Depends(get_company),
-    user: AdminUser = Depends(get_superuser),
+    user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
 ):
     """List all outbound lines for a company"""
@@ -25,7 +25,7 @@ def list_outbound_lines(
 def create_outbound_line(
     payload: OutboundLineCreate,
     company: Company = Depends(get_company),
-    user: AdminUser = Depends(get_superuser),
+    user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
 ):
     """Create a new outbound line (admin only)"""
@@ -58,7 +58,7 @@ def update_outbound_line(
     line_id: int,
     payload: OutboundLineUpdate,
     company: Company = Depends(get_company),
-    user: AdminUser = Depends(get_superuser),
+    user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
 ):
     """Update outbound line (admin only)"""
@@ -83,7 +83,7 @@ def update_outbound_line(
 def delete_outbound_line(
     line_id: int,
     company: Company = Depends(get_company),
-    user: AdminUser = Depends(get_superuser),
+    user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
 ):
     """Delete outbound line (admin only)"""

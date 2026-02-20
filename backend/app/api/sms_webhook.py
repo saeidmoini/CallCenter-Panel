@@ -20,4 +20,4 @@ def receive_sms_webhook(
         receiver=to,
         body=body,
     )
-    return {"ok": True, "id": sms.id}
+    return {"ok": True, "stored": bool(sms), "id": sms.id if sms else None}

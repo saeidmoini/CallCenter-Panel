@@ -129,27 +129,37 @@ def _forward_sms_to_managers(text: str) -> None:
         return
 
 
-def ingest_incoming_sms(db: Session, sender: str, receiver: str | None, body: str) -> BankIncomingSms:
+def should_store_bank_sms(parsed: ParsedBankSms | None) -> bool:
+    # Only credit (+) bank SMS messages with valid parsed structure are stored for wallet matching.
+    return bool(parsed and parsed.is_credit)
+
+
+def ingest_incoming_sms(db: Session, sender: str, receiver: str | None, body: str) -> BankIncomingSms | None:
     is_bank_sender = sender == settings.bank_sms_sender
-    parsed, parse_error = parse_bank_sms(body) if is_bank_sender else (None, None)
+    parsed, _parse_error = parse_bank_sms(body) if is_bank_sender else (None, None)
+
+    # Forward every message from bank sender to manager numbers, regardless of parse outcome.
+    if is_bank_sender:
+        _forward_sms_to_managers(body)
+
+    # Store only valid deposit-format bank SMS records.
+    if not is_bank_sender or not should_store_bank_sms(parsed):
+        return None
 
     sms = BankIncomingSms(
         sender=sender,
         receiver=receiver,
         body=body,
-        is_bank_sender=is_bank_sender,
+        is_bank_sender=True,
         parsed_amount_rial=parsed.amount_rial if parsed else None,
         parsed_amount_toman=parsed.amount_toman if parsed else None,
         parsed_transaction_at=parsed.transaction_at_utc if parsed else None,
         parsed_is_credit=parsed.is_credit if parsed else None,
-        parse_error=parse_error,
+        parse_error=None,
     )
     db.add(sms)
     db.commit()
     db.refresh(sms)
-
-    if is_bank_sender:
-        _forward_sms_to_managers(body)
 
     return sms
 

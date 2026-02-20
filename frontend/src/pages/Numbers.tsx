@@ -98,6 +98,7 @@ const NumbersPage = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
+  const [selectingAll, setSelectingAll] = useState(false)
 
   const [bulkAction, setBulkAction] = useState<'update_status' | 'reset' | 'delete'>('update_status')
   const [bulkStatus, setBulkStatus] = useState<string>('IN_QUEUE')
@@ -377,6 +378,38 @@ const NumbersPage = () => {
     fetchStats()
   }
 
+  const handleSelectAllFiltered = async () => {
+    if (!isAdmin || totalCount === 0) return
+    setSelectingAll(true)
+    try {
+      let rows = numbers
+      if (totalCount > numbers.length) {
+        const { data } = await client.get<PhoneNumber[]>('/api/numbers', {
+          params: {
+            company: company?.name || undefined,
+            status: statusFilter || undefined,
+            global_status: globalStatusFilter || undefined,
+            search: search || undefined,
+            start_date: startDateIso,
+            end_date: endDateIso,
+            skip: 0,
+            limit: totalCount,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+          },
+        })
+        rows = data
+      }
+
+      const selectableIds = new Set(rows.filter(isRowSelectable).map((n) => n.id))
+      setSelectAll(false)
+      setExcludedIds(new Set())
+      setSelectedIds(selectableIds)
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
   const handleExport = async () => {
     if (!isAdmin) return
     const ids = selectAll ? [] : Array.from(selectedIds)
@@ -534,14 +567,10 @@ const NumbersPage = () => {
               <span>انتخاب شده: {selectedCount}</span>
               <button
                 className="rounded border border-slate-200 px-2 py-1 text-[11px]"
-                onClick={() => {
-                  setSelectAll(true)
-                  setSelectedIds(new Set())
-                  setExcludedIds(new Set())
-                }}
-                disabled={totalCount === 0}
+                onClick={handleSelectAllFiltered}
+                disabled={totalCount === 0 || selectingAll || loading}
               >
-                انتخاب همه نتایج
+                {selectingAll ? 'در حال انتخاب...' : 'انتخاب همه فیلترشده‌ها'}
               </button>
               <button
                 className="rounded border border-slate-200 px-2 py-1 text-[11px]"

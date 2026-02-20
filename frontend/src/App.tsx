@@ -43,7 +43,7 @@ const App = () => {
                   <Route path="billing" element={<ProtectedRoute allowedRoles={['ADMIN']}><BillingPage /></ProtectedRoute>} />
                   <Route path="admins" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminUsersPage /></ProtectedRoute>} />
                   <Route path="scenarios" element={<ProtectedRoute allowedRoles={['ADMIN']}><ScenariosPage /></ProtectedRoute>} />
-                  <Route path="outbound-lines" element={<ProtectedRoute requireSuperuser><OutboundLinesPage /></ProtectedRoute>} />
+                  <Route path="outbound-lines" element={<ProtectedRoute allowedRoles={['ADMIN']}><OutboundLinesPage /></ProtectedRoute>} />
                   <Route path="profile" element={<ProfilePage />} />
                 </Routes>
               </Layout>
