@@ -109,7 +109,12 @@ def _split_numbers(raw: str | None) -> list[str]:
 
 
 def _normalize_sender(value: str | None) -> str:
-    return _to_ascii_digits((value or "").strip())
+    raw = _to_ascii_digits((value or "").strip())
+    if not raw:
+        return ""
+    # Some providers append a second callback URL after ';' in the `from` query value.
+    # Keep only the first segment so sender matching remains stable.
+    return raw.split(";", 1)[0].strip()
 
 
 def _build_bank_profiles() -> list[BankSmsProfile]:
