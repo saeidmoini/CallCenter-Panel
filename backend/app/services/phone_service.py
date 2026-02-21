@@ -545,33 +545,36 @@ def bulk_action(db: Session, payload: PhoneNumberBulkAction, current_user: Admin
     if total_selected == 0:
         return result
 
+    target_ids_subq = base_query.with_entities(PhoneNumber.id.label("id")).subquery()
+
     if payload.action == "delete":
-        id_subquery = base_query.with_entities(PhoneNumber.id)
-        db.query(CallResult).filter(CallResult.phone_number_id.in_(id_subquery)).delete(synchronize_session=False)
-        result.deleted = base_query.delete(synchronize_session=False)
+        db.query(CallResult).filter(
+            CallResult.phone_number_id.in_(select(target_ids_subq.c.id))
+        ).delete(synchronize_session=False)
+        result.deleted = db.query(PhoneNumber).filter(
+            PhoneNumber.id.in_(select(target_ids_subq.c.id))
+        ).delete(synchronize_session=False)
         db.commit()
         return result
 
     if payload.action == "reset":
         # Delete call_results for this company → dialer will re-call these numbers
-        id_subquery = base_query.with_entities(PhoneNumber.id).subquery()
         if target_company_id:
             db.query(CallResult).filter(
-                CallResult.phone_number_id.in_(select(id_subquery.c.id)),
+                CallResult.phone_number_id.in_(select(target_ids_subq.c.id)),
                 CallResult.company_id == target_company_id,
             ).delete(synchronize_session=False)
-        result.reset = (
-            base_query.update(
-                {PhoneNumber.assigned_at: None, PhoneNumber.assigned_batch_id: None},
-                synchronize_session=False,
-            ) or 0
-        )
+        result.reset = db.query(PhoneNumber).filter(
+            PhoneNumber.id.in_(select(target_ids_subq.c.id))
+        ).update(
+            {PhoneNumber.assigned_at: None, PhoneNumber.assigned_batch_id: None},
+            synchronize_session=False,
+        ) or 0
         db.commit()
         return result
 
     if payload.action == "update_status" and payload.status:
         if target_company_id:
-            target_ids_subq = base_query.with_entities(PhoneNumber.id.label("id")).subquery()
             shared_status = (
                 GlobalStatus.POWER_OFF
                 if payload.status == CallStatus.POWER_OFF
