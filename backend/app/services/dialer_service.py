@@ -59,10 +59,18 @@ def fetch_next_batch(db: Session, company: Company, size: int | None = None):
             "outbound_agents": [],
         }
 
-    requested_size = size or settings.default_batch_size
-    requested_size = min(requested_size, settings.max_batch_size)
-    if requested_size <= 0:
-        requested_size = settings.default_batch_size
+    active_outbound_lines = db.query(OutboundLine).filter(
+        OutboundLine.company_id == company.id,
+        OutboundLine.is_active == True
+    ).all()
+    active_lines_count = len(active_outbound_lines)
+
+    if size is None:
+        # DEFAULT_BATCH_SIZE is treated as "per active outbound line".
+        requested_size = settings.default_batch_size * active_lines_count
+    else:
+        requested_size = size
+    requested_size = max(0, requested_size)
 
     unlock_stale_assignments(db)
 
@@ -133,11 +141,6 @@ def fetch_next_batch(db: Session, company: Company, size: int | None = None):
         Scenario.company_id == company.id,
         Scenario.is_active == True
     ).all()
-    active_outbound_lines = db.query(OutboundLine).filter(
-        OutboundLine.company_id == company.id,
-        OutboundLine.is_active == True
-    ).all()
-
     return {
         "call_allowed": True,
         "timezone": settings.timezone,

@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(1440, alias="ACCESS_TOKEN_EXPIRE_MINUTES")  # default: 1 day
     algorithm: str = "HS256"
     dialer_token: str = Field(..., alias="DIALER_TOKEN")
-    max_batch_size: int = Field(500, alias="MAX_BATCH_SIZE")
     default_batch_size: int = Field(100, alias="DEFAULT_BATCH_SIZE")
     timezone: str = Field("Asia/Tehran", alias="TIMEZONE")
     skip_holidays_default: bool = Field(True, alias="SKIP_HOLIDAYS")

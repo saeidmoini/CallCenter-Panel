@@ -17,7 +17,7 @@ router = APIRouter(dependencies=[Depends(get_dialer_auth)])
 @router.get("/next-batch", response_model=NextBatchResponse)
 def next_batch(
     company: str = Query(..., description="Company slug"),
-    size: int | None = Query(default=None, ge=1, le=500),
+    size: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ):
     """Fetch next batch of numbers for a company"""
