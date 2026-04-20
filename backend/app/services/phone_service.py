@@ -68,6 +68,13 @@ def _resolve_company_id(db: Session, current_user: AdminUser, company_name: str 
     return target
 
 
+def _effective_agent_filter(current_user: AdminUser, requested_agent_id: int | None) -> int | None:
+    """Agents can only query numbers assigned to themselves."""
+    if current_user.role == UserRole.AGENT:
+        return current_user.id
+    return requested_agent_id
+
+
 def _latest_status_for_company(db: Session, number_id: int, company_id: int) -> CallStatus:
     latest_call = (
         db.query(CallResult)
@@ -253,11 +260,13 @@ def list_numbers(
 
     numbers = _apply_date_filter(numbers, db, target_company_id, start_date, end_date)
 
+    effective_agent_id = _effective_agent_filter(current_user, agent_id)
+
     numbers = _apply_latest_call_filters(
         numbers,
         status=status,
         target_company_id=target_company_id,
-        agent_id=agent_id,
+        agent_id=effective_agent_id,
         db=db,
     )
 
@@ -399,6 +408,7 @@ def _enrich_with_call_data(db: Session, number_list: list, target_company_id: in
         .options(
             joinedload(CallResult.scenario),
             joinedload(CallResult.outbound_line),
+            joinedload(CallResult.agent),
         )
         .filter(
             CallResult.phone_number_id.in_(number_ids),
@@ -421,6 +431,17 @@ def _enrich_with_call_data(db: Session, number_list: list, target_company_id: in
             number.last_attempt_at = latest_call.attempted_at
             number.last_user_message = latest_call.user_message
             number.assigned_agent_id = latest_call.agent_id
+            number.assigned_agent = (
+                {
+                    "id": latest_call.agent.id,
+                    "username": latest_call.agent.username,
+                    "first_name": latest_call.agent.first_name,
+                    "last_name": latest_call.agent.last_name,
+                    "phone_number": latest_call.agent.phone_number,
+                }
+                if latest_call.agent
+                else None
+            )
             number.total_attempts = call_counts.get(number.id, 0)
             number.scenario_display_name = latest_call.scenario.display_name if latest_call.scenario else None
             number.outbound_line_display_name = latest_call.outbound_line.display_name if latest_call.outbound_line else None
@@ -449,11 +470,13 @@ def count_numbers(
 
     query = _apply_date_filter(query, db, target_company_id, start_date, end_date)
 
+    effective_agent_id = _effective_agent_filter(current_user, agent_id)
+
     query = _apply_latest_call_filters(
         query,
         status=status,
         target_company_id=target_company_id,
-        agent_id=agent_id,
+        agent_id=effective_agent_id,
         db=db,
     )
 
