@@ -527,6 +527,9 @@ def delete_number(db: Session, number_id: int, current_user: AdminUser, company_
         {DialerBatchItem.report_call_result_id: None},
         synchronize_session=False,
     )
+    db.query(DialerBatchItem).filter(
+        DialerBatchItem.phone_number_id == number_id
+    ).delete(synchronize_session=False)
     db.query(CallResult).filter(CallResult.phone_number_id == number_id).delete(synchronize_session=False)
     db.delete(number)
     db.commit()

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
+import logging
 
 from fastapi import HTTPException
 from sqlalchemy import select, or_
@@ -21,6 +22,7 @@ from .phone_service import normalize_phone, _sync_global_status_from_call_status
 from . import auth_service
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # CRITICAL: Only these 6 statuses are billable (use bot, charge customer)
 BILLABLE_STATUSES = {
@@ -212,6 +214,19 @@ def report_result(db: Session, report: DialerReport, company: Company):
     4. Charge billing if status is billable
     """
     normalized_phone = normalize_phone(report.phone_number) if report.phone_number else None
+    logger.warning(
+        "dialer_report_result company=%s phone=%s number_id=%s batch_id=%s status=%s scenario_id=%s outbound_line_id=%s agent_id=%s agent_phone=%s attempted_at=%s",
+        report.company,
+        report.phone_number,
+        report.number_id,
+        report.batch_id,
+        report.status.value,
+        report.scenario_id,
+        report.outbound_line_id,
+        report.agent_id,
+        report.agent_phone,
+        report.attempted_at.isoformat(),
+    )
     if not normalized_phone and report.number_id is None:
         raise HTTPException(status_code=400, detail="phone_number or number_id is required")
 
@@ -273,12 +288,14 @@ def report_result(db: Session, report: DialerReport, company: Company):
     # Set shared/global status on numbers table for statuses that apply to all companies
     _sync_global_status_from_call_status(number, report.status)
 
+    resolved_scenario_id = report.scenario_id
+
     # Create call result
     call_direction = CallDirection.INBOUND if report.number_id is None else CallDirection.OUTBOUND
     call_result = CallResult(
         phone_number_id=number.id,
         company_id=company.id,
-        scenario_id=report.scenario_id,
+        scenario_id=resolved_scenario_id,
         outbound_line_id=report.outbound_line_id,
         call_direction=call_direction,
         status=report.status.value,
@@ -338,7 +355,25 @@ def report_result(db: Session, report: DialerReport, company: Company):
     batch_item.report_call_result_id = call_result.id
     batch_item.report_attempted_at = report.attempted_at
     batch_item.report_status = report.status.value
-    batch_item.report_scenario_id = report.scenario_id
+    if resolved_scenario_id is None:
+        resolved_scenario_id = batch_item.report_scenario_id
+    if resolved_scenario_id is None:
+        previous_call_result = (
+            db.query(CallResult)
+            .filter(
+                CallResult.company_id == company.id,
+                CallResult.phone_number_id == number.id,
+                CallResult.id != call_result.id,
+                CallResult.scenario_id.is_not(None),
+            )
+            .order_by(CallResult.id.desc())
+            .first()
+        )
+        if previous_call_result:
+            resolved_scenario_id = previous_call_result.scenario_id
+
+    call_result.scenario_id = resolved_scenario_id
+    batch_item.report_scenario_id = resolved_scenario_id
     batch_item.report_outbound_line_id = report.outbound_line_id
     batch_item.report_reason = report.reason
 
@@ -346,7 +381,7 @@ def report_result(db: Session, report: DialerReport, company: Company):
 
     # Charge billing only for billable statuses
     if report.status in BILLABLE_STATUSES:
-        charge_for_connected_call(db, company_id=company.id, scenario_id=report.scenario_id)
+        charge_for_connected_call(db, company_id=company.id, scenario_id=resolved_scenario_id)
 
     db.refresh(number)
     return {

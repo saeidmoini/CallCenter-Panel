@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, time, timedelta, date, timezone
 
-from sqlalchemy import func, text
+from sqlalchemy import func, text, case
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -204,12 +204,16 @@ def attempt_trend(db: Session, span: int = 14, granularity: str = "day", company
 
 
 def cost_summary(db: Session, company_id: int) -> dict:
-    # Get company billing config from settings
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company or not company.settings:
-        rate = 0
-    else:
-        rate = company.settings.get("cost_per_connected", 0)
+    cfg = ensure_config(db, company_id=company_id)
+    default_rate = cfg.cost_per_connected or 0
+
+    effective_rate = case(
+        (
+            Scenario.cost_per_connected.is_not(None),
+            Scenario.cost_per_connected,
+        ),
+        else_=default_rate,
+    )
 
     now_tehran = datetime.now(TEHRAN_TZ)
     start_of_day = datetime.combine(now_tehran.date(), time(0, 0), tzinfo=TEHRAN_TZ).astimezone(timezone.utc)
@@ -217,6 +221,16 @@ def cost_summary(db: Session, company_id: int) -> dict:
 
     daily_count = (
         db.query(func.count(CallResult.id))
+        .filter(CallResult.company_id == company_id)
+        .filter(CallResult.status.in_([status.value for status in CONNECTED_STATUSES]))
+        .filter(CallResult.attempted_at >= start_of_day)
+        .scalar()
+        or 0
+    )
+    daily_cost = (
+        db.query(func.coalesce(func.sum(effective_rate), 0))
+        .select_from(CallResult)
+        .outerjoin(Scenario, Scenario.id == CallResult.scenario_id)
         .filter(CallResult.company_id == company_id)
         .filter(CallResult.status.in_([status.value for status in CONNECTED_STATUSES]))
         .filter(CallResult.attempted_at >= start_of_day)
@@ -231,13 +245,23 @@ def cost_summary(db: Session, company_id: int) -> dict:
         .scalar()
         or 0
     )
+    monthly_cost = (
+        db.query(func.coalesce(func.sum(effective_rate), 0))
+        .select_from(CallResult)
+        .outerjoin(Scenario, Scenario.id == CallResult.scenario_id)
+        .filter(CallResult.company_id == company_id)
+        .filter(CallResult.status.in_([status.value for status in CONNECTED_STATUSES]))
+        .filter(CallResult.attempted_at >= start_of_month)
+        .scalar()
+        or 0
+    )
     return {
         "currency": "Toman",
-        "cost_per_connected": rate,
+        "cost_per_connected": default_rate,
         "daily_count": daily_count,
-        "daily_cost": daily_count * rate,
+        "daily_cost": daily_cost,
         "monthly_count": monthly_count,
-        "monthly_cost": monthly_count * rate,
+        "monthly_cost": monthly_cost,
     }
 
 
