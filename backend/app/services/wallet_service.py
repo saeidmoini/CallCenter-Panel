@@ -162,8 +162,16 @@ def _resolve_profile_by_sender(sender: str) -> BankSmsProfile | None:
 
 def _send_sms_via_profile(profile: BankSmsProfile, text: str) -> None:
     if not profile.manager_numbers:
+        logger.warning(
+            "sms_forward skipped: no manager numbers configured for profile=%s",
+            profile.key,
+        )
         return
     if not profile.melipayamak_api_key:
+        logger.warning(
+            "sms_forward skipped: no melipayamak api key configured for profile=%s",
+            profile.key,
+        )
         return
 
     payload = {
@@ -174,22 +182,43 @@ def _send_sms_via_profile(profile: BankSmsProfile, text: str) -> None:
     }
     base_url = (settings.melipayamak_advanced_url or "").rstrip("/")
     endpoint_url = base_url if base_url.endswith(f"/{profile.melipayamak_api_key}") else f"{base_url}/{profile.melipayamak_api_key}"
+    endpoint_base = endpoint_url.rsplit("/", 1)[0] + "/***"
     req = request.Request(
         endpoint_url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with request.urlopen(req, timeout=10):
-        pass
+    logger.info(
+        "sms_forward attempt profile=%s to=%s from=%s endpoint=%s",
+        profile.key,
+        profile.manager_numbers,
+        profile.melipayamak_from,
+        endpoint_base,
+    )
+    with request.urlopen(req, timeout=10) as resp:
+        resp_body = resp.read(400).decode("utf-8", errors="ignore")
+        logger.info(
+            "sms_forward success profile=%s to=%s http_status=%s response=%s",
+            profile.key,
+            profile.manager_numbers,
+            getattr(resp, "status", "unknown"),
+            resp_body,
+        )
 
 
 def _forward_sms_to_managers(profile: BankSmsProfile, text: str) -> None:
     forwarded = f"{profile.bank_name}:\n{text}"
     try:
         _send_sms_via_profile(profile, forwarded)
-    except Exception:
+    except Exception as exc:
         # Forwarding failure should not block SMS ingestion.
+        logger.warning(
+            "sms_forward failed profile=%s to=%s error=%s",
+            profile.key,
+            profile.manager_numbers,
+            exc,
+        )
         return
 
 
@@ -286,6 +315,14 @@ def ingest_incoming_sms(db: Session, sender: str, receiver: str | None, body: st
     profile = _resolve_profile_by_sender(sender)
     is_bank_sender = profile is not None
     parsed, _parse_error = _parse_bank_sms_by_profile(profile, body) if profile else (None, None)
+    logger.info(
+        "sms_webhook received sender=%s receiver=%s is_bank_sender=%s profile=%s body_preview=%s",
+        sender,
+        receiver,
+        is_bank_sender,
+        profile.key if profile else None,
+        (body or "")[:120],
+    )
 
     # Forward every message from bank sender to manager numbers, regardless of parse outcome.
     if profile:
