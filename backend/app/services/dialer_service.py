@@ -114,7 +114,8 @@ def fetch_next_batch(
                 PhoneNumber.last_called_at < cooldown_cutoff
             ),
         )
-        .order_by(PhoneNumber.id)
+        # Newer inserts should be sent first, so sort by descending primary key.
+        .order_by(PhoneNumber.id.desc())
         .limit(requested_size)
         .with_for_update(skip_locked=True)
     )
