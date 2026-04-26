@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from ..api.deps import get_superuser, get_company, get_company_admin
@@ -59,6 +59,7 @@ def manual_wallet_adjust(
     company: Company = Depends(get_company),
     user: AdminUser = Depends(get_superuser),
     db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks,
 ):
     tx = wallet_service.create_manual_adjustment(
         db,
@@ -68,7 +69,8 @@ def manual_wallet_adjust(
         note=payload.note,
         user=user,
     )
-    wallet_service.notify_google_sheet_topup(
+    background_tasks.add_task(
+        wallet_service.notify_google_sheet_topup,
         company_name=company.name,
         amount_toman=tx.amount_toman,
         transaction_at=tx.transaction_at,
@@ -92,6 +94,7 @@ def topup_match(
     company: Company = Depends(get_company),
     user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks,
 ):
     tx = wallet_service.match_and_charge_from_bank_sms(
         db,
@@ -102,7 +105,8 @@ def topup_match(
         minute=payload.minute,
         user=user,
     )
-    wallet_service.notify_google_sheet_topup(
+    background_tasks.add_task(
+        wallet_service.notify_google_sheet_topup,
         company_name=company.name,
         amount_toman=tx.amount_toman,
         transaction_at=tx.transaction_at,

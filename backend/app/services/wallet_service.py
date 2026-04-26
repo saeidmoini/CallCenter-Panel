@@ -263,8 +263,10 @@ def notify_google_sheet_topup(*, company_name: str, amount_toman: int, transacti
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    # Keep webhook best-effort and bounded; never let long env timeouts stall request handling.
+    timeout_seconds = max(1, min(5, int(settings.google_sheet_webhook_timeout_seconds)))
     try:
-        with request.urlopen(req, timeout=settings.google_sheet_webhook_timeout_seconds):
+        with request.urlopen(req, timeout=timeout_seconds):
             pass
     except Exception as exc:
         # Webhook is best-effort and must not fail wallet charge.
