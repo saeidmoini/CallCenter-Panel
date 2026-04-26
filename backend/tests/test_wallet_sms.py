@@ -4,6 +4,7 @@ from app.services.wallet_service import (
     parse_bank_sms,
     build_utc_datetime_from_jalali_minute,
     should_store_bank_sms,
+    _with_required_sms_suffix,
 )
 from app.services.schedule_service import TEHRAN_TZ
 
@@ -53,3 +54,13 @@ def test_build_utc_datetime_from_jalali_minute_validation():
         build_utc_datetime_from_jalali_minute("1404/11/13", 24, 0)
     with pytest.raises(ValueError):
         build_utc_datetime_from_jalali_minute("1404/11/13", 23, 60)
+
+
+def test_with_required_sms_suffix_appends_when_missing():
+    text = "نمونه پیام"
+    assert _with_required_sms_suffix(text) == "نمونه پیام\nآگرادوب\nلغو11"
+
+
+def test_with_required_sms_suffix_does_not_duplicate_when_present():
+    text = "نمونه پیام\nآگرادوب\nلغو11"
+    assert _with_required_sms_suffix(text) == text

@@ -41,6 +41,7 @@ class BankSmsProfile:
 
 
 PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+SMS_REQUIRED_SUFFIX = "آگرادوب\nلغو11"
 
 
 def _to_ascii_digits(value: str) -> str:
@@ -127,6 +128,15 @@ def _normalize_sender(value: str | None) -> str:
     return raw.split(";", 1)[0].strip()
 
 
+def _with_required_sms_suffix(text: str) -> str:
+    body = (text or "").rstrip()
+    if body.endswith(SMS_REQUIRED_SUFFIX):
+        return body
+    if not body:
+        return SMS_REQUIRED_SUFFIX
+    return f"{body}\n{SMS_REQUIRED_SUFFIX}"
+
+
 def _build_bank_profiles() -> list[BankSmsProfile]:
     salehi = BankSmsProfile(
         key="salehi",
@@ -177,7 +187,7 @@ def _send_sms_via_profile(profile: BankSmsProfile, text: str) -> None:
     payload = {
         "from": profile.melipayamak_from,
         "to": profile.manager_numbers,
-        "text": text,
+        "text": _with_required_sms_suffix(text),
         "udh": "",
     }
     base_url = (settings.melipayamak_advanced_url or "").rstrip("/")
