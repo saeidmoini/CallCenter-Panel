@@ -137,6 +137,30 @@ def _with_required_sms_suffix(text: str) -> str:
     return f"{body}\n{SMS_REQUIRED_SUFFIX}"
 
 
+def _extract_otp_code(body: str) -> str | None:
+    text = _to_ascii_digits(body or "")
+    match = re.search(r"رمز\s*[:：]?\s*([0-9]{4,8})", text)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _extract_transaction_datetime_line(body: str) -> str | None:
+    text = _to_ascii_digits(body or "")
+    match = re.search(r"(?m)^\s*(\d{4}/\d{1,2}/\d{1,2}-\d{1,2}:\d{1,2})\s*$", text)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _extract_balance_line(body: str) -> str | None:
+    text = _to_ascii_digits(body or "")
+    match = re.search(r"(?m)^\s*(مانده\s*[:：]\s*[0-9][0-9,]*)\s*$", text)
+    if not match:
+        return None
+    return match.group(1)
+
+
 def _build_bank_profiles() -> list[BankSmsProfile]:
     salehi = BankSmsProfile(
         key="salehi",
@@ -217,8 +241,37 @@ def _send_sms_via_profile(profile: BankSmsProfile, text: str) -> None:
         )
 
 
-def _forward_sms_to_managers(profile: BankSmsProfile, text: str) -> None:
-    forwarded = f"{profile.bank_name}:\n{text}"
+def _build_manager_alert_message(
+    profile: BankSmsProfile,
+    body: str,
+    parsed: ParsedBankSms | None,
+) -> str | None:
+    if parsed:
+        signed_toman = f"{'+' if parsed.is_credit else '-'}{parsed.amount_toman:,}"
+        dt_line = _extract_transaction_datetime_line(body) or _to_jalali_datetime_text(parsed.transaction_at_utc)
+        balance_line = _extract_balance_line(body)
+        message = (
+            f"{profile.bank_name} : ادمین گرامی کیف پول شما شارژ شد\n"
+            f"{signed_toman}"
+        )
+        if dt_line:
+            message += f"\n{dt_line}"
+        if balance_line:
+            message += f"\n{balance_line}"
+        return message
+
+    otp_code = _extract_otp_code(body)
+    if otp_code:
+        return f"{profile.bank_name} OPT : {otp_code}"
+
+    return None
+
+
+def _forward_sms_to_managers(profile: BankSmsProfile, body: str, parsed: ParsedBankSms | None) -> None:
+    forwarded = _build_manager_alert_message(profile, body, parsed)
+    if not forwarded:
+        logger.info("sms_forward skipped: unsupported message format profile=%s", profile.key)
+        return
     try:
         _send_sms_via_profile(profile, forwarded)
     except Exception as exc:
@@ -301,8 +354,7 @@ def notify_managers_wallet_topup_success(
         return
 
     message = (
-        f"{profile.bank_name}:\n"
-        f"اکانت {company_name} شارژ شد\n"
+        f"ادمین گرامی اکانت {company_name} شارژ شد\n"
         f"مبلغ: {_format_amount_toman(tx.amount_toman)} ت\n"
         f"تاریخ: {_to_jalali_datetime_text(tx.transaction_at)}"
     )
@@ -336,9 +388,9 @@ def ingest_incoming_sms(db: Session, sender: str, receiver: str | None, body: st
         (body or "")[:120],
     )
 
-    # Forward every message from bank sender to manager numbers, regardless of parse outcome.
+    # Forward transformed manager alerts only (never raw bank body text).
     if profile:
-        _forward_sms_to_managers(profile, body)
+        _forward_sms_to_managers(profile, body, parsed)
 
     # Store only valid deposit-format bank SMS records.
     if not is_bank_sender or not should_store_bank_sms(parsed):

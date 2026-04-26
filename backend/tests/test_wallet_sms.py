@@ -1,10 +1,12 @@
 import pytest
 
 from app.services.wallet_service import (
+    BankSmsProfile,
     parse_bank_sms,
     build_utc_datetime_from_jalali_minute,
     should_store_bank_sms,
     _with_required_sms_suffix,
+    _build_manager_alert_message,
 )
 from app.services.schedule_service import TEHRAN_TZ
 
@@ -64,3 +66,39 @@ def test_with_required_sms_suffix_appends_when_missing():
 def test_with_required_sms_suffix_does_not_duplicate_when_present():
     text = "نمونه پیام\nآگرادوب\nلغو11"
     assert _with_required_sms_suffix(text) == text
+
+
+def _profile() -> BankSmsProfile:
+    return BankSmsProfile(
+        key="salehi",
+        bank_name="MI",
+        sms_senders=["30008528"],
+        manager_numbers=["09120000000"],
+        melipayamak_from="9982003047",
+        melipayamak_api_key="x",
+        parser_key="default",
+    )
+
+
+def test_build_manager_alert_message_for_credit_transaction():
+    body = "362970014368052001\n100,000,000+\n1405/1/31-19:26\nمانده:446,011,554"
+    parsed, error = parse_bank_sms(body)
+    assert error is None
+    assert parsed is not None
+    message = _build_manager_alert_message(_profile(), body, parsed)
+    assert message == "MI : ادمین گرامی کیف پول شما شارژ شد\n+10,000,000\n1405/1/31-19:26\nمانده:446,011,554"
+
+
+def test_build_manager_alert_message_for_debit_transaction():
+    body = "362970014368052001\n53,025,000-\n1404/12/4-15:50\nمانده:250,142,354"
+    parsed, error = parse_bank_sms(body)
+    assert error is None
+    assert parsed is not None
+    message = _build_manager_alert_message(_profile(), body, parsed)
+    assert message == "MI : ادمین گرامی کیف پول شما شارژ شد\n-5,302,500\n1404/12/4-15:50\nمانده:250,142,354"
+
+
+def test_build_manager_alert_message_for_otp_message():
+    body = "پرداخت\n606373*7763\n48,250,000 ريال\nرمز 046981\nاعتبار 19:15:00"
+    message = _build_manager_alert_message(_profile(), body, parsed=None)
+    assert message == "MI OPT : 046981"
