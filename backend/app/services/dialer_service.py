@@ -53,6 +53,15 @@ def fetch_next_batch(
     now = datetime.now(TEHRAN_TZ)
     allowed, reason, retry_after = is_call_allowed(now, db, company_id=company.id)
 
+    active_outbound_lines = db.query(OutboundLine).filter(
+        OutboundLine.company_id == company.id,
+        OutboundLine.is_active == True
+    ).all()
+    active_scenarios = db.query(Scenario).filter(
+        Scenario.company_id == company.id,
+        Scenario.is_active == True
+    ).all()
+
     if not allowed:
         return {
             "call_allowed": False,
@@ -61,16 +70,17 @@ def fetch_next_batch(
             "schedule_version": config.version,
             "reason": reason,
             "retry_after_seconds": retry_after,
-            "active_scenarios": [],
-            "outbound_lines": [],
+            "active_scenarios": [
+                {"id": s.id, "name": s.name, "display_name": s.display_name}
+                for s in active_scenarios
+            ],
+            "outbound_lines": [
+                {"id": line.id, "phone_number": line.phone_number, "display_name": line.display_name}
+                for line in active_outbound_lines
+            ],
             "inbound_agents": [],
             "outbound_agents": [],
         }
-
-    active_outbound_lines = db.query(OutboundLine).filter(
-        OutboundLine.company_id == company.id,
-        OutboundLine.is_active == True
-    ).all()
     company_active_lines_count = len(active_outbound_lines)
     if active_lines_count is None:
         effective_lines_count = company_active_lines_count
@@ -160,11 +170,6 @@ def fetch_next_batch(
         AdminUser.agent_type.in_([AgentType.OUTBOUND, AgentType.BOTH])
     ).all()
 
-    # Get active scenarios
-    active_scenarios = db.query(Scenario).filter(
-        Scenario.company_id == company.id,
-        Scenario.is_active == True
-    ).all()
     return {
         "call_allowed": True,
         "timezone": settings.timezone,
