@@ -78,7 +78,7 @@ def fetch_next_batch(
         # Prevent over-allocation if dialer sends an invalid high value.
         effective_lines_count = min(max(active_lines_count, 0), company_active_lines_count)
 
-    if size is None:
+    if size is None or size <= 0:
         # DEFAULT_BATCH_SIZE is treated as "per active outbound line".
         requested_size = settings.default_batch_size * effective_lines_count
     else:

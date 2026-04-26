@@ -22,7 +22,7 @@ def _default_outbound_line_display_name(phone_number: str) -> str:
 @router.get("/next-batch", response_model=NextBatchResponse)
 def next_batch(
     company: str = Query(..., description="Company slug"),
-    size: int | None = Query(default=None, ge=1),
+    size: int | None = Query(default=None, ge=0),
     active_lines_count: int | None = Query(default=None, ge=0, description="Active outbound lines on this dialer server"),
     db: Session = Depends(get_db),
 ):
