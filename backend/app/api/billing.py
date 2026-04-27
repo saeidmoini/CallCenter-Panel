@@ -56,10 +56,10 @@ def update_billing(
 @router.post("/{company_name}/billing/manual-adjust", response_model=WalletTransactionOut, dependencies=[Depends(get_superuser)])
 def manual_wallet_adjust(
     payload: WalletManualAdjustRequest,
+    background_tasks: BackgroundTasks,
     company: Company = Depends(get_company),
     user: AdminUser = Depends(get_superuser),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks,
 ):
     tx = wallet_service.create_manual_adjustment(
         db,
@@ -91,10 +91,10 @@ def manual_wallet_adjust(
 @router.post("/{company_name}/billing/topup-match", response_model=WalletTransactionOut)
 def topup_match(
     payload: WalletTopupMatchRequest,
+    background_tasks: BackgroundTasks,
     company: Company = Depends(get_company),
     user: AdminUser = Depends(get_company_admin),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks,
 ):
     tx = wallet_service.match_and_charge_from_bank_sms(
         db,
